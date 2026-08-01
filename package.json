@@ -1,0 +1,31 @@
+{
+  "name": "finance-block",
+  "version": "0.1.0",
+  "description": "财务块 Finance Block —— 个人财务 OS：复式记账（fin-beancount 真源）+ 渲染视图（finance-log/budget/heatmap/ficalc）+ 财务自由目标计算。",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs --production",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage"
+  },
+  "keywords": [
+    "obsidian",
+    "finance",
+    "bookkeeping",
+    "beancount"
+  ],
+  "author": "wanguliux",
+  "license": "MIT",
+  "dependencies": {
+    "obsidian": "^1.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^1.0.0",
+    "esbuild": "^0.20.0",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  }
+}

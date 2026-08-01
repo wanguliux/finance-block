@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>现金流模拟器 · 三层图原型 v4</title>
+<style>
+  :root{
+    --bg:#1e1e1e; --card:#252525; --card2:#2a2a2a; --line:#3a3a3a;
+    --text:#dcddde; --muted:#9a9b9d; --faint:#6b6c6e;
+    --accent:#9b8cff; --accent-soft:rgba(155,140,255,.16);
+    --green:#4ec07a; --green-soft:rgba(78,192,122,.14);
+    --red:#ef5350; --red-soft:rgba(239,83,80,.14);
+    --blue:#5aa9f0; --blue-soft:rgba(90,169,240,.14);
+    --amber:#e0a64b;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    padding:32px;display:flex;justify-content:center}
+  .finance-block{width:760px;max-width:100%;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:18px 20px}
+  .fb-head{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+  .fb-icon{width:26px;height:26px;color:var(--accent);flex:none}
+  .fb-icon svg{width:100%;height:100%}
+  .fb-title{font-size:16px;font-weight:650}
+  .fc-source-badge{font-size:11px;padding:2px 9px;border-radius:999px;background:var(--card2);
+    color:var(--muted);border:1px solid var(--line)}
+  .fc-mode-hint{font-size:11px;color:var(--faint);border-bottom:1px dashed var(--faint);cursor:help}
+  .fb-actions{margin-left:auto}
+  .fb-save-btn{background:var(--accent);color:#1a1a1a;border:none;border-radius:8px;
+    padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer}
+  .fb-save-btn:hover{filter:brightness(1.08)}
+
+  .fc-basic{display:grid;grid-template-columns:1fr 1fr;gap:12px 22px;margin-bottom:12px}
+  .fc-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+  .fc-field .fc-row{display:flex;align-items:center;gap:10px}
+  .fc-field input[type=range]{flex:1;accent-color:var(--accent)}
+  .fc-field .fc-val{font-size:13px;font-variant-numeric:tabular-nums;min-width:62px;text-align:right;color:var(--text)}
+
+  details.fc-more{margin:6px 0 14px;border:1px solid var(--line);border-radius:10px;background:var(--card2)}
+  details.fc-more>summary{list-style:none;cursor:pointer;padding:9px 14px;font-size:13px;color:var(--muted);user-select:none}
+  details.fc-more>summary::-webkit-details-marker{display:none}
+  details.fc-more>summary::before{content:"▸ ";color:var(--faint)}
+  details.fc-more[open]>summary::before{content:"▾ "}
+  .fc-more-body{padding:4px 14px 14px;display:grid;grid-template-columns:1fr 1fr;gap:12px 22px}
+  .fc-seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .fc-seg button{background:transparent;color:var(--muted);border:none;padding:5px 11px;font-size:12px;cursor:pointer}
+  .fc-seg button.is-active{background:var(--accent-soft);color:var(--accent)}
+
+  .fc-progress{margin-bottom:14px}
+  .fc-progress .bar{height:9px;border-radius:999px;background:var(--card2);overflow:hidden;margin:6px 0 4px}
+  .fc-progress .bar>i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--green),var(--accent))}
+  .fc-progress .status{font-size:12px;color:var(--green)}
+
+  .fc-lifecycle svg{display:block;width:100%;height:auto}
+  .fc-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin:10px 2px 14px}
+  .fc-legend i{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+  .lg-net{background:var(--blue)} .lg-pos{background:var(--green)} .lg-neg{background:var(--red)}
+  .lg-ev{background:transparent;border:1.5px solid var(--amber);transform:rotate(45deg);width:9px;height:9px}
+
+  .fc-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+  .fc-card{background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:9px 11px}
+  .fc-card .k{font-size:11px;color:var(--muted)}
+  .fc-card .v{font-size:15px;font-weight:650;font-variant-numeric:tabular-nums;margin-top:3px}
+  .fc-freedom{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+  .fc-freedom .fc-card .v{color:var(--accent)}
+
+  .fc-sim-wrap{border:1px solid var(--line);border-radius:10px;background:var(--card2);overflow:hidden}
+  .fc-sim-toggle{width:100%;display:flex;align-items:center;gap:8px;background:transparent;border:none;
+    color:var(--text);padding:11px 14px;font-size:13px;cursor:pointer;text-align:left}
+  .fc-sim-caret{color:var(--faint);font-size:12px}
+  .fc-sim-toggle-label{font-weight:600}
+  .fc-sim-toggle-hint{color:var(--faint);font-size:11.5px}
+  .fc-sim{padding:6px 14px 16px}
+  .fc-sim.is-collapsed{display:none}
+  .fc-sim-pill{display:inline-flex;align-items:center;gap:7px;background:var(--green-soft);color:var(--green);
+    border-radius:999px;padding:4px 12px;font-size:12.5px;font-weight:600;margin:4px 0 12px}
+  .fc-sim-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+  .fc-sim-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+  .fc-sim-area{border:1px solid var(--line);border-radius:9px;background:var(--card);padding:4px}
+  .fc-sim-area svg{display:block;width:100%;height:auto}
+  table.fc-sim-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}
+  table.fc-sim-table th,table.fc-sim-table td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--muted)}
+  table.fc-sim-table th:first-child,table.fc-sim-table td:first-child{text-align:left}
+  table.fc-sim-table td{color:var(--text);font-variant-numeric:tabular-nums}
+
+  .fc-lifecycle{position:relative;display:flex;align-items:stretch;border:1px solid var(--line);border-radius:10px;background:var(--card2);padding:6px 4px}
+  .fc-layer-labels{flex:none;width:22px;display:flex;flex-direction:column;justify-content:space-around;padding:8px 0;
+    border-right:1px solid var(--line);margin-right:6px}
+  .fc-layer-label{writing-mode:vertical-rl;text-orientation:mixed;font-size:10.5px;color:var(--faint);
+    letter-spacing:2px;white-space:nowrap;line-height:1.4}
+  .fc-chart-area{flex:1;min-width:0}
+
+  .fc-event{cursor:pointer}
+  .fc-event:hover .fc-diamond{fill:var(--amber)}
+
+  /* 蒙特卡洛指标：8 格网格 */
+  .fc-sim-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="finance-block ficalc">
+
+  <!-- 头部：图标 + 标题 + 徽章「模拟」+ 唯一保存按钮「保存参数」 -->
+  <div class="fb-head">
+    <div class="fb-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 3v18h18"/><path d="M7 14l3-4 3 3 4-6"/>
+      </svg>
+    </div>
+    <div class="fb-title">现金流模拟器</div>
+    <div class="fc-source-badge is-manual" title="当前为模拟模式：数字可由你直接输入，是一个「如果…会怎样」的推演沙盒。在「设置 › 账户管理」配置资产账户后会自动切换为「资产账户」模式。">模拟</div>
+    <div class="fc-mode-hint" title="在「设置 › 账户管理」配置资产账户后，本块会自动切换为「资产账户」模式并预填本金 / 年花费 / 年储蓄。">配置资产账户 → 自动启用</div>
+    <div class="fb-actions">
+      <button class="fb-save-btn">保存参数</button>
+    </div>
+  </div>
+
+  <!-- 基础假设 4 滑条 -->
+  <div class="fc-basic">
+    <div class="fc-field"><label>生息本金（万）</label><div class="fc-row"><input type="range" min="0" max="1000" value="100"><span class="fc-val">100 万</span></div></div>
+    <div class="fc-field"><label>年支出（万）</label><div class="fc-row"><input type="range" min="1" max="100" value="4"><span class="fc-val">4 万</span></div></div>
+    <div class="fc-field"><label>年储蓄（万）</label><div class="fc-row"><input type="range" min="0" max="100" value="10"><span class="fc-val">10 万</span></div></div>
+    <div class="fc-field"><label>当前年龄</label><div class="fc-row"><input type="range" min="20" max="70" value="40"><span class="fc-val">40 岁</span></div></div>
+  </div>
+
+  <!-- 更多假设（折叠） -->
+  <details class="fc-more">
+    <summary>更多假设</summary>
+    <div class="fc-more-body">
+      <div class="fc-field"><label>通胀率（%）</label><div class="fc-row"><input type="range" min="0" max="10" value="2.5"><span class="fc-val">2.5%</span></div></div>
+      <div class="fc-field"><label>退休年龄</label><div class="fc-row"><input type="range" min="50" max="75" value="70"><span class="fc-val">70 岁</span></div></div>
+      <div class="fc-field"><label>年化收益率（%）</label><div class="fc-row"><input type="range" min="1" max="15" value="7"><span class="fc-val">7%</span></div></div>
+      <div class="fc-field"><label>波动率（%）</label><div class="fc-row"><input type="range" min="0" max="20" value="8"><span class="fc-val">8%</span></div></div>
+      <div class="fc-field" style="grid-column:1/3"><label>提取策略</label>
+        <div class="fc-seg"><button class="is-active">固定</button><button>比例</button><button>4% 法则</button></div>
+      </div>
+      <div class="fc-field" style="grid-column:1/3"><label>储蓄增长（%/年）</label><div class="fc-row"><input type="range" min="0" max="10" value="2"><span class="fc-val">2%</span></div></div>
+    </div>
+  </details>
+
+  <!-- 财务自由进度 -->
+  <div class="fc-progress">
+    <div class="bar"><i></i></div>
+    <div class="status">已实现财务自由 · 预计 41 岁达成</div>
+  </div>
+
+  <!-- ★ 三层图（唯一被替换的区域）★ -->
+  <div class="fc-lifecycle">
+    <!-- 左侧竖排图层标签（不挤压图表内容） -->
+    <div class="fc-layer-labels">
+      <span class="fc-layer-label">净资产曲线</span>
+      <span class="fc-layer-label">现金流</span>
+      <span class="fc-layer-label">关键事件</span>
+    </div>
+    <!-- 图表主体 -->
+    <div class="fc-chart-area">
+    <svg viewBox="0 0 720 360" role="img" aria-label="三层生命周期图：净资产曲线 / 现金流柱状 / 关键事件">
+      <!-- 图层背景分隔 -->
+      <rect x="0" y="0"   width="720" height="155" fill="transparent"/>
+      <!-- 层1 净资产（无图层标题文字，颜色即语义） -->
+      <!-- 面积 + 曲线 -->
+      <path d="M60,140.7 L137.5,127.7 L215,111 L292.5,94.3 L370,77.6 L447.5,62.7 L525,49.7 L602.5,38.6 L680,29.3 L680,150 L60,150 Z" fill="rgba(90,169,240,.12)"/>
+      <path d="M60,140.7 L137.5,127.7 L215,111 L292.5,94.3 L370,77.6 L447.5,62.7 L525,49.7 L602.5,38.6 L680,29.3" fill="none" stroke="#5aa9f0" stroke-width="2.4" stroke-linejoin="round"/>
+      <!-- 财务自由里程碑竖线（紫色虚线） -->
+      <line x1="237" y1="14" x2="237" y2="346" stroke="#9b8cff" stroke-width="1.4" stroke-dasharray="5 4" opacity=".8"/>
+      <text x="237" y="12" font-size="10" fill="#9b8cff" text-anchor="middle">财务自由 · 41岁</text>
+
+      <!-- 层2 现金流（无图层标题文字，颜色即语义） -->
+      <!-- 正负底色 -->
+      <rect x="56" y="170" width="624" height="65" fill="rgba(78,192,122,.07)"/>
+      <rect x="56" y="235" width="624" height="65" fill="rgba(239,83,80,.07)"/>
+      <!-- 零分位线 -->
+      <line x1="56" y1="235" x2="680" y2="235" stroke="#9a9b9d" stroke-width="1.4"/>
+      <text x="680" y="231" font-size="10" fill="#9a9b9d" text-anchor="end">零分位</text>
+      <!-- 柱状：正绿 / 负红 -->
+      <rect x="56"  y="219.5" width="8" height="15.5" fill="#4ec07a"/>
+      <rect x="118" y="206"   width="8" height="29"   fill="#4ec07a"/>
+      <rect x="180" y="235"   width="8" height="38.7" fill="#ef5350"/>
+      <rect x="242" y="192.5" width="8" height="42.5" fill="#4ec07a"/>
+      <rect x="304" y="225"   width="8" height="10"   fill="#4ec07a"/>
+      <rect x="366" y="177"   width="8" height="58"   fill="#4ec07a"/>
+      <rect x="428" y="217"   width="8" height="18"   fill="#4ec07a"/>
+      <rect x="490" y="210"   width="8" height="25"   fill="#4ec07a"/>
+      <rect x="552" y="223"   width="8" height="12"   fill="#4ec07a"/>
+      <rect x="614" y="207"   width="8" height="28"   fill="#4ec07a"/>
+      <rect x="676" y="235"   width="8" height="0"    fill="#4ec07a"/>
+
+      <!-- 层3 关键事件（无图层标题文字；事件标记 + 交替上下标签，竖线贯穿三层） -->
+      <line x1="56" y1="346" x2="680" y2="346" stroke="#3a3a3a" stroke-width="1"/>
+      <!-- 事件1 买房 2027（index0 → 标签在下） -->
+      <line x1="230" y1="20" x2="230" y2="346" stroke="#e0a64b" stroke-width="1" stroke-dasharray="3 4" opacity=".55"/>
+      <rect class="fc-diamond" x="226" y="321" width="8" height="8" transform="rotate(45 230 325)" fill="#e0a64b"/>
+      <line x1="230" y1="329" x2="230" y2="344" stroke="#e0a64b" stroke-width="1"/>
+      <text x="230" y="356" font-size="10" fill="#e0a64b" text-anchor="middle">买房 2027 · 📝</text>
+      <!-- 事件2 子女教育 2032（index1 → 标签在上） -->
+      <line x1="308" y1="20" x2="308" y2="346" stroke="#e0a64b" stroke-width="1" stroke-dasharray="3 4" opacity=".55"/>
+      <rect class="fc-diamond" x="304" y="321" width="8" height="8" transform="rotate(45 308 325)" fill="#e0a64b"/>
+      <line x1="308" y1="321" x2="308" y2="306" stroke="#e0a64b" stroke-width="1"/>
+      <text x="308" y="302" font-size="10" fill="#e0a64b" text-anchor="middle">子女教育 2032 · 📝</text>
+      <!-- 事件3 退休 2050（index2 → 标签在下） -->
+      <line x1="587" y1="20" x2="587" y2="346" stroke="#e0a64b" stroke-width="1" stroke-dasharray="3 4" opacity=".55"/>
+      <rect class="fc-diamond" x="583" y="321" width="8" height="8" transform="rotate(45 587 325)" fill="#e0a64b"/>
+      <line x1="587" y1="329" x2="587" y2="344" stroke="#e0a64b" stroke-width="1"/>
+      <text x="587" y="356" font-size="10" fill="#e0a64b" text-anchor="middle">退休 2050 · 📝</text>
+
+      <!-- 共享 x 轴刻度 -->
+      <g font-size="9" fill="#6b6c6e" text-anchor="middle">
+        <text x="60" y="358">30</text><text x="215" y="358">40</text>
+        <text x="370" y="358">50</text><text x="525" y="358">60</text><text x="680" y="358">70</text>
+      </g>
+    </svg>
+    </div><!-- /fc-chart-area -->
+  </div><!-- /fc-lifecycle -->
+
+  <div class="fc-legend">
+    <span><i class="lg-net"></i>净资产水位</span>
+    <span><i class="lg-pos"></i>现金流为正</span>
+    <span><i class="lg-neg"></i>现金流为负</span>
+    <span><i class="lg-ev"></i>关键事件（链接笔记）</span>
+  </div>
+
+  <!-- 指标卡 -->
+  <div class="fc-metrics">
+    <div class="fc-card"><div class="k">所剩本金</div><div class="v">420 万</div></div>
+    <div class="fc-card"><div class="k">安全提取额</div><div class="v">16.8 万</div></div>
+    <div class="fc-card"><div class="k">可持续年花费</div><div class="v">16.8 万</div></div>
+    <div class="fc-card"><div class="k">年龄峰值</div><div class="v">68 岁</div></div>
+  </div>
+
+  <!-- 财务自由里程碑四格 -->
+  <div class="fc-freedom">
+    <div class="fc-card"><div class="k">财务自由年龄</div><div class="v">41 岁</div></div>
+    <div class="fc-card"><div class="k">所需本金</div><div class="v">105 万</div></div>
+    <div class="fc-card"><div class="k">当前进度</div><div class="v">95%</div></div>
+    <div class="fc-card"><div class="k">距达成</div><div class="v">1 年</div></div>
+  </div>
+
+  <!-- 蒙特卡洛模拟（可收回展开） -->
+  <div class="fc-sim-wrap is-open">
+    <button class="fc-sim-toggle" aria-expanded="true">
+      <span class="fc-sim-caret">▾</span>
+      <span class="fc-sim-toggle-label">蒙特卡洛模拟</span>
+      <span class="fc-sim-toggle-hint">点击展开成功率与分位走势（展开后才计算）</span>
+    </button>
+    <div class="fc-sim">
+      <span class="fc-sim-pill"><span class="dot"></span>成功率 99.7%</span>
+      <div class="fc-sim-metrics">
+        <div class="fc-card"><div class="k">所需本金</div><div class="v">105 万</div></div>
+        <div class="fc-card"><div class="k">本金缺口</div><div class="v">5 万</div></div>
+        <div class="fc-card"><div class="k">可持续年花费</div><div class="v">16.8 万</div></div>
+        <div class="fc-card"><div class="k">安全提取率</div><div class="v">4.0%</div></div>
+        <div class="fc-card"><div class="k">可撑年数</div><div class="v">∞</div></div>
+        <div class="fc-card"><div class="k">预计达成年份</div><div class="v">2027</div></div>
+        <div class="fc-card"><div class="k">年净储蓄</div><div class="v">10 万</div></div>
+        <div class="fc-card"><div class="k">自由里程碑</div><div class="v">41 岁</div></div>
+      </div>
+      <div class="fc-sim-area">
+        <svg viewBox="0 0 680 150" role="img" aria-label="分位区间面积图 P10–P90">
+          <path d="M0,120 L80,108 L160,92 L240,74 L320,58 L400,46 L480,38 L560,32 L640,28 L680,26 L680,120 L0,120 Z" fill="rgba(155,140,255,.18)"/>
+          <path d="M0,120 L80,108 L160,92 L240,74 L320,58 L400,46 L480,38 L560,32 L640,28 L680,26" fill="none" stroke="#9b8cff" stroke-width="2"/>
+          <path d="M0,130 L80,124 L160,116 L240,104 L320,90 L400,78 L480,68 L560,60 L640,54 L680,52" fill="none" stroke="#6b6c6e" stroke-width="1.4" stroke-dasharray="4 3"/>
+        </svg>
+      </div>
+      <table class="fc-sim-table">
+        <thead><tr><th>年龄</th><th>P10</th><th>P50</th><th>P90</th></tr></thead>
+        <tbody>
+          <tr><td>50</td><td>210</td><td>390</td><td>720</td></tr>
+          <tr><td>60</td><td>360</td><td>640</td><td>1,240</td></tr>
+          <tr><td>70</td><td>360</td><td>1,180</td><td>2,640</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 注意：本块唯一的保存入口是头部「保存参数」按钮，无底部额外保存按钮、无「运行模拟」按钮 -->
+
+</div>
+
+<script>
+  // 蒙特卡洛可收回展开
+  document.querySelectorAll('.fc-sim-toggle').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var wrap = btn.closest('.fc-sim-wrap');
+      var open = wrap.classList.toggle('is-open');
+      wrap.querySelector('.fc-sim').classList.toggle('is-collapsed', !open);
+      btn.querySelector('.fc-sim-caret').textContent = open ? '▾' : '▸';
+      btn.setAttribute('aria-expanded', String(open));
+    });
+  });
+  // 事件标记点击 → 阶段三：打开链接笔记 / 编辑事件
+  document.querySelectorAll('.fc-event, [class*=fc-diamond]').forEach(function(el){
+    el.style.cursor='pointer';
+    el.addEventListener('click', function(){
+      var id = el.parentNode.querySelector('text') ? el.parentNode.querySelector('text').textContent : '';
+      alert('阶段三埋点：openLinkText(笔记) / editEvent('+id.trim()+')');
+    });
+  });
+</script>
+</body>
+</html>

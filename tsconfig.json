@@ -1,0 +1,25 @@
+// tsconfig.json：TypeScript 编译配置（JSONC，允许本行这样的 // 注释）。
+// 作用：规定编译目标、模块格式、严格程度等。注意这里的 "noEmit": true——
+// 实际打包由 esbuild 完成，tsc 只用于类型检查，不产出文件。
+{
+  "compilerOptions": {
+    "target": "ES2018",
+    "module": "commonjs",
+    "lib": ["DOM", "ES2018"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    "types": ["node", "vitest", "vitest/globals"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "main.js"]
+}
