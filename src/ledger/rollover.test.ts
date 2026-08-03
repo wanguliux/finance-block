@@ -57,10 +57,10 @@ function makeSettings(): FinancePluginSettings {
     ledgerPath: '账本/2026-07.md',
     archiveLedgers: [],
     configPath: 'finance-config.json',
-    draftReminder: true,
     draftScan: false,
     draftScanFolders: [],
     language: 'zh',
+    managerOrder: [],
   };
 }
 

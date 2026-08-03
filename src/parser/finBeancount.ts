@@ -1,4 +1,5 @@
 import type { BeancountLeg, Transaction, Valuation } from '../types';
+import { t } from '../i18n';
 
 /**
  * fin-beancount 轻量复式代码块解析器
@@ -85,11 +86,18 @@ export function parseFinBeancount(source: string, opts?: { draft?: boolean }): P
     // 零和校验
     const sum = current.legs.reduce((acc, l) => acc + l.amount, 0);
     if (current.legs.length === 0) {
-      errors.push({ line: current.startLine, message: `交易无分录行：${current.date} ${current.narration}` });
+      errors.push({
+        line: current.startLine,
+        message: t('parser.err.noPostings', { date: current.date, narration: current.narration }),
+      });
     } else if (sum !== 0) {
       errors.push({
         line: current.startLine,
-        message: `零和不平衡（差额 ${sum > 0 ? '+' : ''}${sum} 分）：${current.date} ${current.narration}`,
+        message: t('parser.err.zeroSum', {
+          diff: `${sum > 0 ? '+' : ''}${sum}`,
+          date: current.date,
+          narration: current.narration,
+        }),
       });
     }
 
@@ -195,7 +203,10 @@ export function parseFinBeancount(source: string, opts?: { draft?: boolean }): P
     if (!current) {
       // 非缩进的无效行（既不是日期也不是注释）
       if (line.trim() !== '') {
-        errors.push({ line: lineNo, message: `无法识别的行（缺少日期行上下文）：${line.trim()}` });
+        errors.push({
+          line: lineNo,
+          message: t('parser.err.noDateCtx', { line: line.trim() }),
+        });
       }
       continue;
     }
@@ -219,7 +230,7 @@ export function parseFinBeancount(source: string, opts?: { draft?: boolean }): P
     }
 
     // 无法识别的缩进行
-    errors.push({ line: lineNo, message: `无法解析的行：${line.trim()}` });
+    errors.push({ line: lineNo, message: t('parser.err.unparsable', { line: line.trim() }) });
   }
 
   flush(); // 处理最后一笔

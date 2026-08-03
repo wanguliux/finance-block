@@ -13,7 +13,7 @@
 import type { App } from 'obsidian';
 import { Modal, setIcon } from 'obsidian';
 import { t } from '../i18n';
-import type { BlockDefinitionWithParams, ProviderGroup } from '../blockProvider';
+import type { ProviderGroup } from '../blockProvider';
 import { getBlockProviders } from '../blockProvider';
 import type { FinanceConfig } from '../types';
 import { InsertCodeBlockParamModal } from './InsertCodeBlockParamModal';

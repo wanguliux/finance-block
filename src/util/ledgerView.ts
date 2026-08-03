@@ -13,6 +13,7 @@
  */
 
 import type { AccountClass, AccountDef, BeancountLeg, FinanceConfig, Transaction } from '../types';
+import { t } from '../i18n';
 
 // 账户名各段 → 五大类（中英文都支持，含常见别名与单复数）
 // 账户名按 : ／ / 切分取各段匹配，故「费用:餐饮」「Expenses:Food」「资产／现金」都能命中。
@@ -121,11 +122,11 @@ export function resolveAccountClass(name: string, config?: FinanceConfig): Accou
 export function dirOfPost(leg: BeancountLeg, config?: FinanceConfig): { label: string; cls: string } {
   const c = resolveAccountClass(leg.account, config);
   const inc = leg.amount > 0;
-  if (c === 'asset') return inc ? { label: '流入', cls: 'in' } : { label: '流出', cls: 'out' };
-  if (c === 'liability') return inc ? { label: '流出', cls: 'out' } : { label: '流入', cls: 'in' };
-  if (c === 'income') return { label: '来源', cls: 'src' };
-  if (c === 'expense') return { label: '去向', cls: 'sink' };
-  return { label: '权益', cls: 'flat' };
+  if (c === 'asset') return inc ? { label: t('legs.dir.in'), cls: 'in' } : { label: t('legs.dir.out'), cls: 'out' };
+  if (c === 'liability') return inc ? { label: t('legs.dir.out'), cls: 'out' } : { label: t('legs.dir.in'), cls: 'in' };
+  if (c === 'income') return { label: t('legs.dir.src'), cls: 'src' };
+  if (c === 'expense') return { label: t('legs.dir.sink'), cls: 'sink' };
+  return { label: t('legs.dir.flat'), cls: 'flat' };
 }
 
 /** 录入层：每条腿的方向（流入 in / 流出 out），语义上 = 账户余额增加 / 减少。 */

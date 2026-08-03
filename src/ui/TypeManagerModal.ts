@@ -99,7 +99,10 @@ export class TypeManagerModal extends Modal {
 
       const fieldCount = ty.customFields?.length ?? 0;
       infoCol.createDiv({
-        text: fieldCount > 0 ? `${fieldCount} 个自定义字段` : '无自定义字段',
+        text:
+          fieldCount > 0
+            ? t('modal.transactionTypes.fields', { n: String(fieldCount) })
+            : t('modal.transactionTypes.noFields'),
         cls: 'fb-meta',
       });
 
@@ -213,7 +216,12 @@ class TypeEditModal extends Modal {
     cancelBtn.addEventListener('click', () => this.close());
     const saveBtn = btnRow.createEl('button', { text: t('common.save') });
     saveBtn.addClass('mod-cta');
-    saveBtn.addEventListener('click', () => void this.save());
+    saveBtn.addEventListener('click', () => {
+      void this.save().catch((err) => {
+        console.error('[finance-block] save transaction type failed:', err);
+        new Notice(t('common.saveFailed'));
+      });
+    });
   }
 
   private async save(): Promise<void> {

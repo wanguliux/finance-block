@@ -1,6 +1,6 @@
 import { Modal, Notice } from 'obsidian';
 import type FinancePlugin from '../main';
-import type { FinanceConfig, AccountDef, Valuation, AmountInCents } from '../types';
+import type { AccountDef, Valuation, AmountInCents } from '../types';
 import { t } from '../i18n';
 import { localDateString } from '../util/date';
 import { calculateBalances } from '../ledger/closing';
@@ -25,10 +25,6 @@ function fmtYuan(cents: AmountInCents): string {
 
 function fmtPct(pct: number): string {
   return `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
-}
-
-function daysBetween(a: string, b: string): number {
-  return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
 }
 
 /**

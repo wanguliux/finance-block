@@ -490,11 +490,11 @@ function renderReconciliation(
   const msgs: string[] = [];
   if (hasDiff) {
     msgs.push(
-      t('assets.reconDiff').replace('{amount}', fmtAssetMoney(result.reconciliationDiff, symbol)),
+      t('assets.reconDiff', { amount: fmtAssetMoney(result.reconciliationDiff, symbol) }),
     );
   }
   if (hasUnclassified) {
-    msgs.push(t('assets.reconUnclassified').replace('{n}', String(result.unclassifiedCount)));
+    msgs.push(t('assets.reconUnclassified', { n: String(result.unclassifiedCount) }));
   }
   body.createDiv({ cls: 'as-recon-title', text: msgs.join('　') });
   body.createDiv({ cls: 'as-recon-desc', text: t('assets.reconHint') });
@@ -624,7 +624,7 @@ function renderAssetCard(
   if (hasHoldings) {
     card.createDiv({
       cls: 'lot-head',
-      text: t('assets.holdingsHead').replace('{n}', String(g.holdings.length)),
+      text: t('assets.holdingsHead', { n: String(g.holdings.length) }),
     });
     const list = card.createDiv({ cls: 'lot-list' });
     for (const h of g.holdings) {

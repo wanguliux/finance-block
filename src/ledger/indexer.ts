@@ -76,11 +76,6 @@ export class Indexer {
     this.getDraftScan = getDraftScan;
   }
 
-  /** 是否为账本文件（激活 / 归档） */
-  private isLedgerFile(np: string): boolean {
-    return np === this.ledgerPath || this.archiveLedgers.includes(np);
-  }
-
   /** 是否在待入账筛查范围内（enabled 且命中范围文件夹；范围为空 = 全库） */
   private isInDraftScope(np: string): boolean {
     const cfg = this.getDraftScan();

@@ -76,11 +76,6 @@ export default class FinancePlugin extends Plugin {
       });
     }
 
-    // ── 状态栏：未入账提醒 ────────────────────────────────
-    if (this.settings.draftReminder) {
-      this.registerDraftReminder();
-    }
-
     // ── 代码块处理器（依赖注入） ─────────────────────────
     const processors = createProcessors({
       app: this.app,
@@ -160,33 +155,6 @@ export default class FinancePlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
-  }
-
-  /** 注册未入账草稿提醒（状态栏） */
-  private registerDraftReminder(): void {
-    const statusBar = this.addStatusBarItem();
-    statusBar.setText('');
-
-    // 定时更新状态栏（每分钟）
-    this.registerInterval(
-      window.setInterval(() => {
-        this.updateDraftReminder(statusBar);
-      }, 60000)
-    );
-
-    // 初始更新
-    this.updateDraftReminder(statusBar);
-  }
-
-  /** 更新状态栏草稿提醒 */
-  private updateDraftReminder(statusBar: HTMLElement): void {
-    const stats = this.indexer.getStats();
-    if (stats.draftCount > 0) {
-      statusBar.setText(`${stats.draftCount} 笔未入账`);
-      statusBar.setAttribute('aria-label', `${stats.draftCount} 笔草稿未入账`);
-    } else {
-      statusBar.setText('');
-    }
   }
 
   /** 打开「记一笔」弹窗：复用 fin-beancount 录入表单，提交后直接入账到账本 */
@@ -297,14 +265,24 @@ export default class FinancePlugin extends Plugin {
   /** 打开日常计划弹窗；onChanged 在保存后回调（渲染器重绘） */
   private openRecurringPlanModal(plan?: RecurringPlanDef, onChanged?: () => void): void {
     new RecurringPlanModal(this.app, this.config, plan, (saved) => {
-      void this.saveRecurringPlan(saved).then(onChanged);
+      void this.saveRecurringPlan(saved)
+        .then(onChanged)
+        .catch((err) => {
+          console.error('[finance-block] save recurring plan failed:', err);
+          new Notice(t('common.saveFailed'));
+        });
     }).open();
   }
 
   /** 打开贷款弹窗；onChanged 在保存后回调（渲染器重绘） */
   private openLoanModal(loan?: LoanDef, onChanged?: () => void): void {
     new LoanModal(this.app, this.config, loan, (saved) => {
-      void this.saveLoan(saved).then(onChanged);
+      void this.saveLoan(saved)
+        .then(onChanged)
+        .catch((err) => {
+          console.error('[finance-block] save loan failed:', err);
+          new Notice(t('common.saveFailed'));
+        });
     }).open();
   }
 

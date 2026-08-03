@@ -37,7 +37,9 @@ export function t(key: string, vars?: Record<string, string>): string {
   let text = locales[current]?.[key] ?? locales.zh[key] ?? key;
   if (vars) {
     for (const [k, v] of Object.entries(vars)) {
-      text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+      // 必须用函数形式：v 可能来自用户输入（账户名/分类名/备注等），
+      // 若含 $& / $' / $` / $n，字符串形式的 replace 替换值会被解释为特殊模式导致文案错乱。
+      text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), () => v);
     }
   }
   return text;

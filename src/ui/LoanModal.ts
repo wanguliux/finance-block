@@ -13,6 +13,7 @@ import type { App } from 'obsidian';
 import { t } from '../i18n';
 import type { FinanceConfig, LoanDef, LoanFrequency, LoanType } from '../types';
 import { computeLoanSchedule } from '../engine/loan';
+import { currencySymbol, buildSymbolMap } from '../engine/fx';
 
 export class LoanModal extends Modal {
   private config: FinanceConfig;
@@ -150,7 +151,7 @@ export class LoanModal extends Modal {
     }
     const def: LoanDef = {
       id: this.existing?.id ?? 'preview',
-      name: (this.inputs['name'] as HTMLInputElement).value || '贷款',
+      name: (this.inputs['name'] as HTMLInputElement).value || t('recurring.loan.defaultName'),
       type, principal: Math.round(P * 100), annualRate: rate, termYears: Math.max(1, Math.round(years)),
       frequency: freq, firstPaymentDate: '2026-09-01',
       assetAccount: '', liabilityAccount: '', interestAccount: '',
@@ -160,11 +161,16 @@ export class LoanModal extends Modal {
     if (s.length === 0) return;
     const first = s[0];
     const totalInterest = s.reduce((acc, p) => acc + p.interestPart, 0);
-    this.pvFirst.textContent = `¥${(first.total / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / 期`;
+    const symbol = currencySymbol(this.config.baseCurrency ?? 'CNY', buildSymbolMap(this.config.currencies));
+    const fmt = (c: number): string =>
+      `${symbol}${(c / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    this.pvFirst.textContent = `${fmt(first.total)}${t('recurring.loan.perPeriod')}`;
     this.pvDesc.textContent = t('recurring.loan.pvDesc', { n: String(s.length) });
-    this.pvSplit.textContent = t('recurring.loan.pvSplit') + ` 本金 ¥${(first.principalPart / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · 利息 ¥${(first.interestPart / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    this.pvPeriods.textContent = t('recurring.loan.pvPeriods') + ` ${s.length} 期`;
-    this.pvInterest.textContent = t('recurring.loan.pvInterest') + ` ¥${(totalInterest / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    this.pvSplit.textContent =
+      t('recurring.loan.pvSplit') +
+      `  ${t('recurring.loan.splitFmt', { principal: fmt(first.principalPart), interest: fmt(first.interestPart) })}`;
+    this.pvPeriods.textContent = t('recurring.loan.pvPeriods') + ` ${t('recurring.loan.periods', { n: String(s.length) })}`;
+    this.pvInterest.textContent = t('recurring.loan.pvInterest') + ` ${fmt(totalInterest)}`;
   }
 
   private accountField(parent: HTMLElement, key: string, label: string, value: string): void {

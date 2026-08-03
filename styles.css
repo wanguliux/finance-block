@@ -644,27 +644,146 @@
 .finance-block.finance-budget .bd-fill.warn { background: var(--fb-amber); }
 .finance-block.finance-budget .bd-fill.over { background: var(--fb-red); }
 
-/* ─── finance-heatmap 支出热力图（原型 .hm-* 语法） ─────────── */
+/* ─── finance-heatmap 收支热力图 v3（原型 .hm-* 语法，2026-08-03 落地） ── */
 
-.finance-block.finance-heatmap .hm-empty {
-  padding: 1.5em; text-align: center; color: var(--fb-text-faint); font-style: italic;
+.finance-block.finance-heatmap [hidden] { display: none !important; }
+.finance-block.finance-heatmap .hidden { display: none !important; }
+
+/* 工具条 */
+.finance-block.finance-heatmap .hm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em; margin-bottom: 0.2em; }
+.finance-block.finance-heatmap .hm-tabs,
+.finance-block.finance-heatmap .hm-seg {
+  display: flex; background: var(--background-secondary); border: 1px solid var(--fb-border);
+  border-radius: 9px; padding: 3px; gap: 2px;
 }
-.finance-block.finance-heatmap .hm-table {
-  width: 100%; border-collapse: collapse; font-size: 1em; overflow-x: auto; display: block;
+.finance-block.finance-heatmap .hm-tab,
+.finance-block.finance-heatmap .hm-seg button {
+  border: none; background: transparent; font: inherit; font-size: 0.9em; font-weight: 600;
+  color: var(--text-muted); padding: 4px 12px; border-radius: 7px; cursor: pointer; transition: color 0.15s;
 }
-.finance-block.finance-heatmap .hm-table th,
+.finance-block.finance-heatmap .hm-tab:hover,
+.finance-block.finance-heatmap .hm-seg button:hover { color: var(--text-normal); }
+.finance-block.finance-heatmap .hm-tab.active,
+.finance-block.finance-heatmap .hm-seg button.active {
+  background: var(--background-primary); color: var(--fb-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.finance-block.finance-heatmap .hm-spacer { flex: 1; }
+.finance-block.finance-heatmap .hm-select {
+  font: inherit; font-size: 0.9em; padding: 4px 8px; border-radius: 8px;
+  border: 1px solid var(--fb-border); background: var(--background-primary); color: var(--text-normal); cursor: pointer; outline: none;
+}
+.finance-block.finance-heatmap .hm-select:focus { border-color: var(--fb-accent); }
+.finance-block.finance-heatmap .hm-day-input { display: flex; align-items: center; gap: 0.35em; font-size: 0.9em; color: var(--text-muted); }
+.finance-block.finance-heatmap .hm-day-input input {
+  width: 4.2em; font: inherit; font-size: 0.95em; font-weight: 600; padding: 4px 6px; border-radius: 8px;
+  border: 1px solid var(--fb-border); background: var(--background-primary); color: var(--text-normal);
+  text-align: center; font-variant-numeric: tabular-nums; outline: none;
+}
+.finance-block.finance-heatmap .hm-day-input input:focus { border-color: var(--fb-accent); }
+
+/* 统计条 */
+.finance-block.finance-heatmap .hm-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0.8em 0 1em; }
+.finance-block.finance-heatmap .hm-metric { background: var(--background-secondary); border: 1px solid var(--fb-border); border-radius: 10px; padding: 7px 12px; }
+.finance-block.finance-heatmap .hm-metric .lbl { font-size: 0.8em; color: var(--text-muted); }
+.finance-block.finance-heatmap .hm-metric .num { font-size: 1.15em; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.finance-block.finance-heatmap .hm-metric .num.pos { color: var(--fb-green); }
+.finance-block.finance-heatmap .hm-metric .num.neg { color: var(--fb-red); }
+.finance-block.finance-heatmap .hm-metric .sub { font-size: 0.8em; color: var(--fb-text-faint); margin-top: 1px; }
+
+/* 日历视图 */
+.finance-block.finance-heatmap .hm-cal-wrap { margin: 2px 0 4px; }
+.finance-block.finance-heatmap .hm-months { display: flex; margin: 0 0 5px 26px; }
+.finance-block.finance-heatmap .hm-month { font-size: 0.72em; color: var(--fb-text-faint); font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
+.finance-block.finance-heatmap .hm-body { display: grid; column-gap: 2px; row-gap: 2px; width: fit-content; }
+.finance-block.finance-heatmap .hm-dow { font-size: 0.7em; color: var(--fb-text-faint); display: flex; align-items: center; }
+.finance-block.finance-heatmap .hm-day {
+  width: 16px; height: 16px; border-radius: 4px; background: var(--fb-track);
+  cursor: pointer; transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.finance-block.finance-heatmap .hm-day:hover { transform: scale(1.35); box-shadow: 0 0 0 1.5px var(--fb-accent); position: relative; z-index: 2; }
+.finance-block.finance-heatmap .hm-day.off { background: transparent; border: 1px dashed var(--fb-border); cursor: default; }
+.finance-block.finance-heatmap .hm-day.off:hover { transform: none; box-shadow: none; }
+.finance-block.finance-heatmap .hm-day.today { outline: 1.5px solid var(--fb-accent); outline-offset: 1px; }
+
+/* 分类矩阵 */
+.finance-block.finance-heatmap .hm-table-wrap { overflow-x: auto; }
+.finance-block.finance-heatmap .hm-table { border-collapse: separate; border-spacing: 3px; width: 100%; min-width: 560px; }
+.finance-block.finance-heatmap .hm-table th { font-size: 0.78em; color: var(--text-muted); font-weight: 500; padding: 3px; white-space: nowrap; }
 .finance-block.finance-heatmap .hm-table td {
-  padding: 0.3em 0.4em; text-align: center; border: 1px solid var(--fb-border);
+  min-width: 34px; height: 30px; text-align: center; font-size: 0.78em;
+  font-variant-numeric: tabular-nums; border-radius: 6px; color: var(--text-normal); cursor: pointer; transition: outline 0.1s ease;
 }
-.finance-block.finance-heatmap .hm-corner { background: transparent; border: none; }
-.finance-block.finance-heatmap .hm-week { background: var(--background-secondary); font-weight: 500; color: var(--text-muted); font-size: 1.05em; white-space: nowrap; }
-.finance-block.finance-heatmap .hm-cat { background: var(--background-secondary); font-weight: 500; color: var(--text-normal); text-align: left; white-space: nowrap; }
-.finance-block.finance-heatmap .hm-cell { min-width: 3em; height: 2em; font-size: 1em; color: var(--text-normal); font-variant-numeric: tabular-nums; }
-.finance-block.finance-heatmap .hm-cell.has-data { font-weight: 500; }
-.finance-block.finance-heatmap .hm-legend { display: flex; align-items: center; gap: 0.5em; margin-top: 0.8em; font-size: 1em; color: var(--text-muted); flex-wrap: wrap; }
-.finance-block.finance-heatmap .hm-legend-label { flex-shrink: 0; }
-.finance-block.finance-heatmap .hm-legend-bar { flex: 1; height: 8px; border-radius: 4px; min-width: 80px; }
-.finance-block.finance-heatmap .hm-legend-unit { flex-shrink: 0; color: var(--fb-text-faint); }
+.finance-block.finance-heatmap .hm-table td:hover { outline: 1.5px solid var(--fb-accent); }
+.finance-block.finance-heatmap .hm-cat { text-align: left; min-width: 190px; cursor: pointer; }
+.finance-block.finance-heatmap .hm-cat .nm { font-weight: 600; color: var(--text-normal); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.finance-block.finance-heatmap .hm-cat .nm .dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+.finance-block.finance-heatmap .hm-cat .nm .hm-dir { font-size: 0.66em; font-weight: 700; padding: 1px 5px; border-radius: 4px; letter-spacing: 0.02em; line-height: 1.4; }
+.finance-block.finance-heatmap .hm-dir.in { background: var(--fb-teal-soft); color: var(--fb-teal-strong); }
+.finance-block.finance-heatmap .hm-dir.out { background: var(--fb-amber-soft); color: var(--fb-amber); }
+.finance-block.finance-heatmap .hm-cat .tt { font-size: 0.72em; color: var(--text-muted); margin-top: 3px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.finance-block.finance-heatmap .hm-cat .tt .sum { font-weight: 700; font-variant-numeric: tabular-nums; }
+.finance-block.finance-heatmap .hm-share { display: inline-block; height: 3px; border-radius: 2px; background: var(--fb-track); width: 40px; overflow: hidden; vertical-align: middle; }
+.finance-block.finance-heatmap .hm-share i { display: block; height: 100%; background: var(--fb-green); }
+.finance-block.finance-heatmap .hm-cat .spark { width: 56px; height: 14px; margin-left: auto; opacity: 0.85; flex-shrink: 0; }
+.finance-block.finance-heatmap .hm-cat .spark svg { width: 100%; height: 100%; display: block; }
+.finance-block.finance-heatmap .hm-sort-hint { font-size: 0.72em; color: var(--fb-text-faint); font-weight: 500; }
+.finance-block.finance-heatmap .hm-col-total { background: var(--background-secondary); font-weight: 600; color: var(--text-muted); cursor: default; }
+.finance-block.finance-heatmap .hm-col-total:hover { outline: none !important; }
+.finance-block.finance-heatmap .hm-expand {
+  border: 1px solid var(--fb-border); background: var(--background-secondary); color: var(--text-muted);
+  font: inherit; font-size: 0.85em; font-weight: 600; padding: 4px 12px; border-radius: 7px; cursor: pointer; margin-top: 8px; transition: 0.15s;
+}
+.finance-block.finance-heatmap .hm-expand:hover { color: var(--fb-accent); border-color: var(--fb-accent); }
+
+/* 通用提示行 */
+.finance-block.finance-heatmap .hm-hint { font-size: 0.82em; color: var(--fb-text-faint); margin-top: 10px; }
+.finance-block.finance-heatmap .hm-empty { padding: 1.5em; text-align: center; color: var(--fb-text-faint); font-style: italic; }
+
+/* 图例（双向） */
+.finance-block.finance-heatmap .hm-legend { display: flex; align-items: center; gap: 7px; margin-top: 1em; font-size: 0.85em; color: var(--text-muted); flex-wrap: wrap; }
+.finance-block.finance-heatmap .hm-legend .bar2 { width: 84px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+.finance-block.finance-heatmap .hm-legend .bar-income { background: linear-gradient(90deg, rgba(52, 168, 83, 0.10), rgba(52, 168, 83, 0.95)); }
+.finance-block.finance-heatmap .hm-legend .bar-expense { background: linear-gradient(90deg, rgba(234, 67, 53, 0.10), rgba(234, 67, 53, 0.95)); }
+.finance-block.finance-heatmap .hm-legend .note { margin-left: auto; color: var(--fb-text-faint); }
+
+/* 悬浮提示 */
+.finance-block.finance-heatmap .hm-tip {
+  position: fixed; pointer-events: none; z-index: 99;
+  background: var(--background-primary); border: 1px solid var(--fb-border);
+  box-shadow: var(--fb-shadow-hover); border-radius: 9px; padding: 8px 11px;
+  font-size: 0.85em; line-height: 1.55; max-width: 250px;
+}
+.finance-block.finance-heatmap .hm-tip .tp-date { font-weight: 600; color: var(--text-normal); }
+.finance-block.finance-heatmap .hm-tip .tp-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.finance-block.finance-heatmap .hm-tip .tp-dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+.finance-block.finance-heatmap .hm-tip .tp-amt { font-weight: 700; font-variant-numeric: tabular-nums; margin-left: auto; }
+.finance-block.finance-heatmap .hm-tip .tp-amt.in { color: var(--fb-green); }
+.finance-block.finance-heatmap .hm-tip .tp-amt.out { color: var(--fb-red); }
+.finance-block.finance-heatmap .hm-tip .tp-meta { color: var(--fb-text-faint); font-size: 0.95em; }
+
+/* 明细面板 */
+.finance-block.finance-heatmap .hm-detail { display: none; margin-top: 12px; border: 1px solid var(--fb-border); border-radius: 10px; overflow: hidden; }
+.finance-block.finance-heatmap .hm-detail.open { display: block; }
+.finance-block.finance-heatmap .hm-detail .hd { display: flex; align-items: center; gap: 8px; padding: 9px 13px; background: var(--background-secondary); font-weight: 600; font-size: 0.95em; }
+.finance-block.finance-heatmap .hm-detail .hd .close {
+  margin-left: auto; border: none; background: var(--background-primary); color: var(--text-muted);
+  width: 22px; height: 22px; border-radius: 6px; font-size: 13px; line-height: 1; cursor: pointer;
+}
+.finance-block.finance-heatmap .hm-detail .hd .close:hover { color: var(--fb-red); background: var(--fb-red-soft); }
+.finance-block.finance-heatmap .hm-detail table { width: 100%; border-collapse: collapse; }
+.finance-block.finance-heatmap .hm-detail th { font-size: 0.8em; color: var(--text-muted); font-weight: 500; text-align: left; padding: 7px 13px; border-top: 1px solid var(--fb-border); }
+.finance-block.finance-heatmap .hm-detail td { font-size: 0.9em; padding: 7px 13px; border-top: 1px solid var(--fb-border); font-variant-numeric: tabular-nums; }
+.finance-block.finance-heatmap .hm-detail td .d-dot { display: inline-block; width: 8px; height: 8px; border-radius: 3px; margin-right: 7px; vertical-align: 0; }
+.finance-block.finance-heatmap .hm-detail td.amt { text-align: right; font-weight: 600; }
+.finance-block.finance-heatmap .hm-detail td.amt.in { color: var(--fb-green); }
+.finance-block.finance-heatmap .hm-detail td.amt.out { color: var(--fb-red); }
+.finance-block.finance-heatmap .hm-detail tr.sum td { font-weight: 700; background: var(--background-secondary); }
+.finance-block.finance-heatmap .hm-detail-empty { padding: 1.2em; text-align: center; color: var(--fb-text-faint); }
+
+@media (max-width: 720px) {
+  .finance-block.finance-heatmap .hm-metrics { grid-template-columns: repeat(2, 1fr); }
+}
 
 /* ─── 占位卡片 ───────────────────────────────────────────────── */
 
@@ -1834,3 +1953,34 @@
 .finance-recurring-modal .rc-preview-row { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .finance-recurring-modal .rc-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
 .finance-recurring-modal .is-hidden { display: none !important; }
+
+/* ── 设置页「管理」列表：拖拽手柄钉到行最左侧（Obsidian ≥1.13 声明式 list） ──
+ * Obsidian 原生把 .mod-drag-handle（lucide-menu 手柄）加在 .setting-item-control 内，
+ * 这里绝对定位到行最左缘并给整行让位。注意三个坑：
+ * ① Obsidian 默认 .setting-group .setting-item:not(.setting-item-heading) 的 padding
+ *    简写特异性是 (0,2,0)，且 cascade 更靠后——我们的 padding-left 必须用更高特异性
+ *    (.setting-group 前缀 → (0,3,0)) + !important 兜底，否则被覆盖回 --setting-items-padding-x，
+ *    手柄会压进文字（真实踩过）。
+ * ② 手柄是 clickable-icon 按钮自带内边距，实际占宽约 28px → padding-left 给足 48px。
+ * ③ 仅命中带拖拽手柄的设置行（:has()），不影响其它设置项；拖拽事件仍由 Obsidian 绑定，只挪位置。 */
+.setting-group .setting-item:has(.mod-drag-handle) {
+  position: relative;
+  padding-left: 48px !important;
+}
+.setting-group .setting-item:has(.mod-drag-handle) .mod-drag-handle {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+}
+.setting-group .setting-item:has(.mod-drag-handle) .mod-drag-handle:active {
+  cursor: grabbing;
+}

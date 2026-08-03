@@ -870,18 +870,27 @@ function renderPostedWithGrouping(
   });
   box.insertBefore(ctrlBar, entries);
 
-  const WK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const WK = [
+    t('beancount.group.weekday0'),
+    t('beancount.group.weekday1'),
+    t('beancount.group.weekday2'),
+    t('beancount.group.weekday3'),
+    t('beancount.group.weekday4'),
+    t('beancount.group.weekday5'),
+    t('beancount.group.weekday6'),
+  ];
 
   function groupKey(txn: Transaction): string {
     if (mode === 'day') return txn.date;
-    if (mode === 'week') return weekStart(parseYmd(txn.date)).toISOString().slice(0, 10);
+    // 分组键必须用本地时区格式化：toISOString() 是 UTC，东八区凌晨会把日期归到前一天。
+    if (mode === 'week') return localDateString(weekStart(parseYmd(txn.date)));
     if (mode === 'month') return txn.date.slice(0, 7);
     if (mode === 'custom') {
       const s = parseYmd(customStart);
       const t = parseYmd(txn.date);
       const diff = Math.round((t.getTime() - s.getTime()) / 86400000);
       const i = Math.floor(diff / customN);
-      return addDays(s, i * customN).toISOString().slice(0, 10);
+      return localDateString(addDays(s, i * customN));
     }
     return 'all';
   }
@@ -902,13 +911,16 @@ function renderPostedWithGrouping(
       return `${key} ${WK[d.getDay()]}`;
     }
     if (mode === 'week') return weekLabel(key);
-    if (mode === 'month') return `${key.replace('-', '年')}月`;
+    if (mode === 'month') {
+      const [year, month] = key.split('-');
+      return t('beancount.group.monthLabel', { year, month });
+    }
     if (mode === 'custom') {
       const s = parseYmd(key);
       const e = addDays(s, customN - 1);
       return `${fmtMD(s)} ~ ${fmtMD(e)}`;
     }
-    return '全部';
+    return t('beancount.group.all');
   }
 
   function syncButtons(): void {
@@ -1075,7 +1087,7 @@ async function handlePostEntry(
     return;
   }
 
-  const { results, ledgerPath: lp } = await postTransactionsInBlock(
+  const { results, ledgerPath: lp, writebackFailed } = await postTransactionsInBlock(
     app,
     sourceFile,
     source,
@@ -1090,6 +1102,9 @@ async function handlePostEntry(
     new Notice(t('beancount.postSuccess', { ledgerPath: lp || ledgerPath }));
     if (lp) await indexer.updateFile(lp);
     await indexer.updateFile(sourcePath);
+  }
+  if (writebackFailed) {
+    new Notice(t('poster.err.blockMoved'));
   }
   const failed = results.find((r) => !r.success);
   if (failed) {
@@ -1136,7 +1151,7 @@ async function handleBatchPostEntry(
     return;
   }
 
-  const { results, ledgerPath: lp } = await postTransactionsInBlock(
+  const { results, ledgerPath: lp, writebackFailed } = await postTransactionsInBlock(
     app,
     sourceFile,
     source,
@@ -1155,6 +1170,9 @@ async function handleBatchPostEntry(
     }));
     if (lp) await indexer.updateFile(lp);
     await indexer.updateFile(sourcePath);
+  }
+  if (writebackFailed) {
+    new Notice(t('poster.err.blockMoved'));
   }
   if (failed > 0) {
     const firstError = results.find((r) => !r.success);

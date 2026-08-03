@@ -13,7 +13,7 @@
  * indexer.fullScan() 即可读到最新列表——若重新赋值新数组，indexer 仍持有旧引用会失效。
  */
 
-import { App, Modal, Notice, Setting, TFile } from 'obsidian';
+import { Modal, Notice, Setting, TFile } from 'obsidian';
 import type FinancePlugin from '../main';
 import { t } from '../i18n';
 import { confirmWithModal } from './Confirm';

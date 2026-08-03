@@ -1,6 +1,6 @@
 import { Modal, Notice } from 'obsidian';
 import type FinancePlugin from '../main';
-import type { AccountClass, AccountDef, DepreciationDef, Owner } from '../types';
+import type { AccountClass, AccountDef, DepreciationDef } from '../types';
 import { t, tClass } from '../i18n';
 import { confirmWithModal } from './Confirm';
 
@@ -344,7 +344,12 @@ class AccountEditModal extends Modal {
     cancelBtn.addEventListener('click', () => this.close());
     const saveBtn = btnRow.createEl('button', { text: t('common.save') });
     saveBtn.addClass('mod-cta');
-    saveBtn.addEventListener('click', () => void this.save());
+    saveBtn.addEventListener('click', () => {
+      void this.save().catch((err) => {
+        console.error('[finance-block] save account failed:', err);
+        new Notice(t('common.saveFailed'));
+      });
+    });
   }
 
   private async save(): Promise<void> {

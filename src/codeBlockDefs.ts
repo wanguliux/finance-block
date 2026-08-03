@@ -8,8 +8,6 @@
  *   2. 键值模式（无 template）：生成 `key: value` 行，适合 finance-log 等视图参数
  */
 
-import { t } from './i18n';
-
 export type ParamType = 'text' | 'number' | 'select' | 'date' | 'amount' | 'legs';
 
 /**
@@ -297,7 +295,7 @@ export const FINANCE_CODE_BLOCK_DEFS: CodeBlockDef[] = [
     ],
   },
 
-  // ── 视图层：热力图 ───────────────────────────────────────
+  // ── 视图层：热力图（收支双向，v3） ───────────────────────
   {
     language: 'finance-heatmap',
     icon: 'grid',
@@ -305,11 +303,36 @@ export const FINANCE_CODE_BLOCK_DEFS: CodeBlockDef[] = [
     descKey: 'block.finance-heatmap.desc',
     params: [
       {
-        key: 'weeks',
-        labelKey: 'param.weeks',
-        descKey: 'param.weeks.desc',
+        key: 'day',
+        labelKey: 'param.heatmapDays',
+        descKey: 'param.heatmapDays.desc',
         type: 'number',
-        placeholder: '12',
+        placeholder: '182',
+      },
+      {
+        key: 'view',
+        labelKey: 'param.heatmapView',
+        descKey: 'param.heatmapView.desc',
+        type: 'select',
+        options: ['calendar', 'matrix'],
+        optionLabels: { calendar: '总览日历', matrix: '分类矩阵' },
+        defaultValue: 'calendar',
+      },
+      {
+        key: 'gran',
+        labelKey: 'param.heatmapGran',
+        descKey: 'param.heatmapGran.desc',
+        type: 'select',
+        options: ['week', 'month'],
+        optionLabels: { week: '按周', month: '按月' },
+        defaultValue: 'week',
+      },
+      {
+        key: 'category',
+        labelKey: 'param.heatmapCategory',
+        descKey: 'param.heatmapCategory.desc',
+        type: 'select',
+        optionsFrom: 'transactionTypes',
       },
     ],
   },

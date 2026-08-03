@@ -326,7 +326,12 @@ class CurrencyEditModal extends Modal {
 
     const saveBtn = btnRow.createEl('button', { text: t('common.save') });
     saveBtn.addClass('mod-cta');
-    saveBtn.addEventListener('click', () => void this.save());
+    saveBtn.addEventListener('click', () => {
+      void this.save().catch((err) => {
+        console.error('[finance-block] save currency failed:', err);
+        new Notice(t('common.saveFailed'));
+      });
+    });
   }
 
   private async save(): Promise<void> {

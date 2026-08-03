@@ -189,7 +189,9 @@ export class LifeEventManagerModal extends Modal {
     const list = this.plugin.config.lifeEvents ?? (this.plugin.config.lifeEvents = []);
     if (list.some((e) => e.type === 'retire')) return;
     list.unshift({ id: 'retire', label: t('event.type.retire'), type: 'retire', age: 60, enabled: true });
-    void this.plugin.configManager.save();
+    void this.plugin.configManager.save().catch((err) => {
+      console.error('[finance-block] seed retire event failed:', err);
+    });
   }
 
   private baseSymbol(): string {
@@ -323,7 +325,12 @@ class LifeEventEditModal extends Modal {
     cancelBtn.addEventListener('click', () => this.close());
     const saveBtn = btnRow.createEl('button', { text: t('common.save') });
     saveBtn.addClass('mod-cta');
-    saveBtn.addEventListener('click', () => void this.save());
+    saveBtn.addEventListener('click', () => {
+      void this.save().catch((err) => {
+        console.error('[finance-block] save life event failed:', err);
+        new Notice(t('common.saveFailed'));
+      });
+    });
   }
 
   private async save(): Promise<void> {

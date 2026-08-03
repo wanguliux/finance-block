@@ -237,10 +237,10 @@ export abstract class EntryFormModal extends Modal {
       if (group.items.length > 1) {
         const rowWrap = this.paramContainer.createDiv({ cls: 'finance-field-row' });
         for (const item of group.items) {
-          this.renderSingleParam(rowWrap, item, lastAccount);
+          this.renderSingleParam(rowWrap, item);
         }
       } else {
-        this.renderSingleParam(this.paramContainer, group.items[0], lastAccount);
+        this.renderSingleParam(this.paramContainer, group.items[0]);
       }
     }
 
@@ -271,7 +271,6 @@ export abstract class EntryFormModal extends Modal {
   private renderSingleParam(
     parent: HTMLElement,
     p: ParamDef,
-    lastAccount: string,
   ): void {
     const row = parent.createDiv({ cls: 'finance-field' });
 

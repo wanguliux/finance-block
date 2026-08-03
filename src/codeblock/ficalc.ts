@@ -51,7 +51,7 @@ import {
 import { currencySymbol, buildSymbolMap, buildFxRates } from '../engine/fx';
 import { bucketAssets, type AssetBuckets } from '../engine/assetBuckets';
 import { buildAccountFlows, computeNetWorthSeries } from '../engine/networth';
-import type { FinanceConfig, AccountDef, AmountInCents, LifeEventType, Valuation } from '../types';
+import type { FinanceConfig, AmountInCents, LifeEventType, Valuation } from '../types';
 import { calculateBalances } from '../ledger/closing';
 import type { Indexer, IndexEntry } from '../ledger/indexer';
 import { resolveAccountClass } from '../util/ledgerView';

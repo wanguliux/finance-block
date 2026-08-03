@@ -17,6 +17,7 @@ import { t } from '../i18n';
 import type { AmountInCents, FinanceConfig, LoanDef, LoanPeriod, RecurringPlanDef, Transaction } from '../types';
 import { todayLocal } from '../util/date';
 import { fmtCents } from '../util/ledgerView';
+import { currencySymbol, buildSymbolMap } from '../engine/fx';
 import { Indexer } from '../ledger/indexer';
 import { deriveLoanDrafts, deriveRecurringDrafts, loanProgress, type LoanDraft, type RecurringDraft } from '../engine/recurring';
 import { BLOCK_ICONS, setSvg } from './icons';
@@ -41,8 +42,8 @@ export interface RecurringRenderDeps {
 /** 会话内「改金额（仅本次）」覆盖表：key = `${planId}:${date}` */
 const amountOverrides = new Map<string, AmountInCents>();
 
-const fmtYuan = (cents: number): string =>
-  '¥' + (cents / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtYuan = (cents: number, symbol: string): string =>
+  symbol + (cents / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** 卡片上操作按钮的最小公因数：返回按钮文字与点击回调 */
 interface DraftVM {
@@ -75,6 +76,7 @@ export function renderRecurring(
 
 function renderInner(el: HTMLElement, deps: RecurringRenderDeps, rerender: () => void): void {
   const config = deps.getFinanceConfig();
+  const symbol = currencySymbol(config?.baseCurrency ?? 'CNY', buildSymbolMap(config?.currencies));
   const posted = deps.indexer.getPostedTransactions().map((e) => e.transaction);
   const today = todayLocal();
 
@@ -103,7 +105,7 @@ function renderInner(el: HTMLElement, deps: RecurringRenderDeps, rerender: () =>
     dateLabel: d.period.date,
     amount: d.period.total,
     preview: `${d.loan.assetAccount} ${fmtCents(-d.period.total)} / ${d.loan.liabilityAccount} ${fmtCents(d.period.principalPart)} / ${d.loan.interestAccount} ${fmtCents(d.period.interestPart)}`,
-    split: `${t('recurring.loan.principalPart')} ${fmtYuan(d.period.principalPart)} · ${t('recurring.loan.interest')} ${fmtYuan(d.period.interestPart)}`,
+    split: `${t('recurring.loan.principalPart')} ${fmtYuan(d.period.principalPart, symbol)} · ${t('recurring.loan.interest')} ${fmtYuan(d.period.interestPart, symbol)}`,
     onPost: () => void postLoan(d, deps, rerender),
   }));
   const drafts: DraftVM[] = [...planVM, ...loanVM].sort((a, b) => (a.dateLabel < b.dateLabel ? -1 : 1));
@@ -131,7 +133,7 @@ function renderInner(el: HTMLElement, deps: RecurringRenderDeps, rerender: () =>
   if (drafts.length === 0) {
     draftList.createDiv({ cls: 'rc-empty', text: t('recurring.due.empty') });
   } else {
-    for (const d of drafts) renderDraftCard(draftList, d);
+    for (const d of drafts) renderDraftCard(draftList, d, symbol);
   }
 
   // ── 管理（tab：我的计划 / 我的贷款） ──
@@ -155,19 +157,19 @@ function renderInner(el: HTMLElement, deps: RecurringRenderDeps, rerender: () =>
   tabLoans.addEventListener('click', () => switchTab(tabLoans, panelLoans, tabPlans, panelPlans));
 
   // 计划列表
-  renderPlanRows(panelPlans, config, deps, rerender);
+  renderPlanRows(panelPlans, config, deps, rerender, symbol);
   const newPlanBtn = panelPlans.createEl('button', { cls: 'rc-new-btn', text: t('recurring.new.plan') });
   newPlanBtn.addEventListener('click', () => deps.openRecurringPlanModal(undefined, rerender));
 
   // 贷款列表
-  renderLoanRows(panelLoans, config, deps, posted, rerender);
+  renderLoanRows(panelLoans, config, deps, posted, rerender, symbol);
   const newLoanBtn = panelLoans.createEl('button', { cls: 'rc-new-btn is-loan', text: t('recurring.new.loan') });
   newLoanBtn.addEventListener('click', () => deps.openLoanModal(undefined, rerender));
 }
 
 // ── 草稿卡 ──────────────────────────────────────────────────────
 
-function renderDraftCard(parent: HTMLElement, d: DraftVM): void {
+function renderDraftCard(parent: HTMLElement, d: DraftVM, symbol: string): void {
   const card = parent.createDiv({ cls: `rc-draft ${d.kind === 'loan' ? 'is-loan' : ''}`.trim() });
   const left = card.createDiv({ cls: 'rc-draft-left' });
   const nameRow = left.createDiv({ cls: 'rc-draft-name' });
@@ -175,7 +177,7 @@ function renderDraftCard(parent: HTMLElement, d: DraftVM): void {
   nameRow.createSpan({ text: d.name });
   if (d.sub) nameRow.createSpan({ cls: 'rc-draft-sub', text: d.sub });
   left.createDiv({ cls: 'rc-draft-date', text: d.dateLabel });
-  card.createDiv({ cls: 'rc-draft-amt', text: fmtYuan(d.amount) });
+  card.createDiv({ cls: 'rc-draft-amt', text: fmtYuan(d.amount, symbol) });
   card.createDiv({ cls: 'rc-draft-preview', text: d.preview });
   if (d.split) card.createDiv({ cls: 'rc-draft-split', text: d.split });
 
@@ -295,7 +297,7 @@ function findLoanDraft(key: string): LoanDraft | undefined {
 
 // ── 我的计划 / 我的贷款（tab 面板） ────────────────────────────
 
-function renderPlanRows(parent: HTMLElement, config: FinanceConfig | undefined, deps: RecurringRenderDeps, rerender: () => void): void {
+function renderPlanRows(parent: HTMLElement, config: FinanceConfig | undefined, deps: RecurringRenderDeps, rerender: () => void, symbol: string): void {
   const plans = config?.recurringPlans ?? [];
   const list = parent.createDiv({ cls: 'rc-plan-list' });
   if (plans.length === 0) {
@@ -309,7 +311,7 @@ function renderPlanRows(parent: HTMLElement, config: FinanceConfig | undefined, 
     const freqText =
       p.frequency === 'daily' ? t('recurring.freq.daily') : p.frequency === 'monthly' ? t('recurring.freq.monthlyShort', { d: String(p.monthlyDay ?? 1) }) : t('recurring.freq.weekday');
     main.createDiv({ cls: 'rc-plan-sub', text: `${freqText} · ${p.account} → ${p.fromAccount}` });
-    row.createDiv({ cls: 'rc-plan-amt', text: fmtYuan(p.amount) });
+    row.createDiv({ cls: 'rc-plan-amt', text: fmtYuan(p.amount, symbol) });
     row.createDiv({ cls: `rc-plan-status ${p.active ? '' : 'is-paused'}`.trim(), text: p.active ? t('recurring.status.running') : t('recurring.status.paused') });
     const btns = row.createDiv({ cls: 'rc-plan-btns' });
     const editBtn = btns.createEl('button', { cls: 'rc-icon-btn', text: t('recurring.edit') });
@@ -341,7 +343,7 @@ async function removePlan(p: RecurringPlanDef, deps: RecurringRenderDeps, rerend
   }
 }
 
-function renderLoanRows(parent: HTMLElement, config: FinanceConfig | undefined, deps: RecurringRenderDeps, posted: Transaction[], rerender: () => void): void {
+function renderLoanRows(parent: HTMLElement, config: FinanceConfig | undefined, deps: RecurringRenderDeps, posted: Transaction[], rerender: () => void, symbol: string): void {
   const loans = config?.loanPlans ?? [];
   const list = parent.createDiv({ cls: 'rc-plan-list' });
   if (loans.length === 0) {
@@ -357,8 +359,8 @@ function renderLoanRows(parent: HTMLElement, config: FinanceConfig | undefined, 
       l.type === 'annuity' ? t('recurring.loan.type.annuity') : l.type === 'equal-principal' ? t('recurring.loan.type.equalPrincipal') : t('recurring.loan.type.interestFirst');
     main.createDiv({ cls: 'rc-plan-sub', text: `${typeText} · ${l.termYears}${t('recurring.loan.years')} · ${l.annualRate}%` });
     const mid = row.createDiv({ cls: 'rc-plan-mid' });
-    mid.createDiv({ cls: 'rc-plan-main', text: fmtYuan(prog.remaining) });
-    mid.createDiv({ cls: 'rc-plan-sub', text: `${t('recurring.loan.next')} ${prog.next ? fmtYuan(prog.next.total) : '—'}` });
+    mid.createDiv({ cls: 'rc-plan-main', text: fmtYuan(prog.remaining, symbol) });
+    mid.createDiv({ cls: 'rc-plan-sub', text: `${t('recurring.loan.next')} ${prog.next ? fmtYuan(prog.next.total, symbol) : '—'}` });
     row.createDiv({ cls: 'rc-plan-amt', text: `${t('recurring.loan.paid', { n: String(prog.paidPeriods), m: String(prog.totalPeriods) })}` });
     const btns = row.createDiv({ cls: 'rc-plan-btns' });
     const editBtn = btns.createEl('button', { cls: 'rc-icon-btn', text: t('recurring.edit') });

@@ -22,6 +22,7 @@
 import { App, TFile } from 'obsidian';
 import { parseFinBeancount } from '../parser/finBeancount';
 import { appendEntryToLedgerBlock } from './ledgerFile';
+import { t } from '../i18n';
 
 /** 入账结果（单笔） */
 export interface PostOneResult {
@@ -163,7 +164,8 @@ export function splitTransactions(source: string): string[] {
  * @param app          Obsidian App 实例
  * @param sourceFile   源文件（含草稿的笔记）
  * @param blockSource  代码块内文（不含围栏）
- * @param startPos     代码块在文件中的起始位置（整段围栏的起点）
+ * @param startPos     代码块在文件中的起始位置（整段围栏的起点）——保留为兼容参数，
+ *                     写回时会基于最新文件内容重新定位（见函数尾部），不直接信任该值。
  * @param endPos       代码块在文件中的结束位置（整段围栏的终点）
  * @param ledgerPath   账本文件完整路径（settings.ledgerPath）
  * @param indices      要入账的条目下标集合
@@ -176,7 +178,7 @@ export async function postTransactionsInBlock(
   endPos: number,
   ledgerPath: string,
   indices: number[],
-): Promise<{ results: PostOneResult[]; ledgerPath?: string }> {
+): Promise<{ results: PostOneResult[]; ledgerPath?: string; writebackFailed?: boolean }> {
   const entries = splitEntries(blockSource);
   const idByIndex = new Map<number, string>();
   const results: PostOneResult[] = [];
@@ -185,7 +187,7 @@ export async function postTransactionsInBlock(
   for (const i of indices) {
     const entry = entries[i];
     if (entry === undefined) {
-      results.push({ index: i, success: false, error: `找不到第 ${i + 1} 条记录` });
+      results.push({ index: i, success: false, error: t('poster.err.notFound', { n: String(i + 1) }) });
       continue;
     }
     const { kind, text } = entry;
@@ -195,7 +197,7 @@ export async function postTransactionsInBlock(
       results.push({
         index: i,
         success: false,
-        error: kind === 'valuation' ? '该估值已入账，不能重复入账' : '该交易已入账，不能重复入账',
+        error: kind === 'valuation' ? t('poster.err.postedVal') : t('poster.err.postedTxn'),
       });
       continue;
     }
@@ -210,14 +212,14 @@ export async function postTransactionsInBlock(
     if (kind === 'valuation') {
       const val = parsed.valuations[0];
       if (!val) {
-        results.push({ index: i, success: false, error: '未找到估值记录' });
+        results.push({ index: i, success: false, error: t('poster.err.noValuation') });
         continue;
       }
       refId = generateValuationRefId(val.date);
     } else {
       const txn = parsed.transactions[0];
       if (!txn) {
-        results.push({ index: i, success: false, error: '未找到交易记录' });
+        results.push({ index: i, success: false, error: t('poster.err.noTxn') });
         continue;
       }
       refId = generateBlockRefId(txn.date);
@@ -228,7 +230,7 @@ export async function postTransactionsInBlock(
       results.push({
         index: i,
         success: false,
-        error: `写入账本失败：${writeResult.error || '未知错误'}`,
+        error: t('poster.err.writeFailed', { error: writeResult.error || t('poster.err.unknown') }),
       });
       continue;
     }
@@ -276,9 +278,30 @@ export async function postTransactionsInBlock(
 
   const newBlock = segments.join('\n\n');
 
+  // 写回前重新定位代码块：以「最新文件内容」重新匹配目标代码块，而不是信任
+  // 调用方渲染时捕获的 startPos/endPos。弹窗打开期间用户可能编辑过笔记（增删行、
+  // 移动代码块），旧位置会漂移——盲目按旧位置切片会破坏用户笔记结构。
   const content = await app.vault.read(sourceFile);
-  const before = content.slice(0, startPos);
-  const after = content.slice(endPos);
+  const codeBlockPattern = /```fin-beancount\r?\n([\s\S]*?)```/g;
+  let match: RegExpExecArray | null;
+  let curStart = -1;
+  let curEnd = -1;
+  while ((match = codeBlockPattern.exec(content)) !== null) {
+    if (match[1].trim() === blockSource.trim()) {
+      curStart = match.index;
+      curEnd = match.index + match[0].length;
+      break;
+    }
+  }
+
+  if (curStart === -1) {
+    // 代码块已不存在或被改得面目全非：放弃原位替换（绝不破坏文件）。
+    // 账本写入已成功；草稿留在原笔记，下次渲染会显示「已入账」状态，用户可手动清理。
+    return { results, ledgerPath, writebackFailed: true };
+  }
+
+  const before = content.slice(0, curStart);
+  const after = content.slice(curEnd);
   await app.vault.modify(sourceFile, before + newBlock + after);
 
   return { results, ledgerPath };

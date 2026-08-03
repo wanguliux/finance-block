@@ -249,7 +249,12 @@ class BudgetEditModal extends Modal {
     cancelBtn.addEventListener('click', () => this.close());
     const saveBtn = btnRow.createEl('button', { text: t('common.save') });
     saveBtn.addClass('mod-cta');
-    saveBtn.addEventListener('click', () => void this.save());
+    saveBtn.addEventListener('click', () => {
+      void this.save().catch((err) => {
+        console.error('[finance-block] save budget failed:', err);
+        new Notice(t('common.saveFailed'));
+      });
+    });
   }
 
   private async save(): Promise<void> {
