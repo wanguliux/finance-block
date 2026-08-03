@@ -2,8 +2,8 @@
   "id": "finance-block",
   "name": "Finance Block",
   "version": "0.1.0",
-  "minAppVersion": "1.12.7",
-  "description": "财务块 Finance Block —— 个人财务 OS：以 fin-beancount 代码块为唯一真源的复式记账、渲染视图（finance-log / budget / heatmap / ficalc）与财务自由目标计算。KOS 原生、极致可配置。Personal finance OS with double-entry bookkeeping stored as fin-beancount code blocks.",
+  "minAppVersion": "1.13.4",
+  "description": "财务块 Finance Block —— 个人财务 OS：以 fin-beancount 代码块为唯一真源的复式记账，配套流水 / 预算 / 热力图 / 现金流模拟 / 资产总览 / 日常花费与贷款视图。KOS 原生、极致可配置，数据纯文本存 vault、可双链、可进 Git。Personal finance OS: double-entry bookkeeping with fin-beancount code blocks as the single source of truth, plus views for transactions, budgets, heatmaps, cash-flow simulation, assets, and recurring expenses/loans. KOS-native, deeply configurable.",
   "author": "wanguliux",
   "authorUrl": "https://github.com/wanguliux",
   "isDesktopOnly": false
