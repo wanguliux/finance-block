@@ -18,6 +18,7 @@ import { convertToBase, currencySymbol, buildFxRates, buildSymbolMap } from '../
 import type { FinanceConfig, BudgetPeriod } from '../types';
 import { t, formatBudgetPeriod } from '../i18n';
 import { localDateString } from '../util/date';
+import { resolveAccountClass } from '../util/ledgerView';
 import { BLOCK_ICONS, setSvg } from './icons';
 
 interface BudgetParams {
@@ -94,8 +95,11 @@ function sumExpenseForType(
     if (e.isDraft) continue;
     if (e.transaction.date < startDate || e.transaction.date > endDate) continue;
     if ((e.transaction.txnType || '').toLowerCase() !== typeKey) continue;
+    // 仅累加「真实费用账户」leg（按账户类别推导），而非所有负向 leg——
+    // 买股票等资产转换即便误标 type=支出，其 leg 全是资产类、无费用类，
+    // 故贡献为 0，不会污染预算（《报告》P0 #3 根因修复）。
     total += e.transaction.legs
-      .filter((l) => l.amount < 0)
+      .filter((l) => resolveAccountClass(l.account, config) === 'expense')
       .reduce((sum, l) => sum + Math.abs(convertToBase(l.amount, e.transaction.currency, fxRates, baseCurrency)), 0);
   }
   return total;

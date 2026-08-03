@@ -97,7 +97,7 @@ export async function executeRollover(
     if (folder && !(await adapter.exists(folder))) {
       await adapter.mkdir(folder);
     }
-    const title = options.newLedgerPath.split('/').pop()?.replace('.md', '') || '账本';
+    const title = options.newLedgerPath.split('/').pop()?.replace(/\.md$/, '') || '账本';
     const content = `# ${title}\n\n\`\`\`fin-beancount\n${openingEntry}\n\`\`\`\n`;
     await adapter.write(options.newLedgerPath, content);
 
@@ -118,6 +118,9 @@ export async function executeRollover(
       openingEntry,
     };
   } catch (error) {
+    // 回滚内存中的设置变更，避免 settings 与持久化状态不一致
+    settings.ledgerPath = oldLedgerPath;
+    settings.archiveLedgers = settings.archiveLedgers.filter((p) => p !== oldLedgerPath);
     return {
       success: false,
       oldLedgerPath,

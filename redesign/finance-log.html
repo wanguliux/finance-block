@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Finance Block · finance-log 流水面板原型 v2.5（流水查询 · 交易类型下拉 · 净变动 · 无分组）</title>
+<style>
+  /* ───────── 设计系统 Token（明暗自适应，与全系一致） ───────── */
+  :root {
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+
+    --fb-accent: #7c5cff;
+    --fb-accent-strong: #6a48f5;
+    --fb-accent-soft: rgba(124, 92, 255, 0.12);
+    --fb-green: #2fa86a;
+    --fb-green-soft: rgba(47, 168, 106, 0.12);
+    --fb-amber: #e0922f;
+    --fb-amber-soft: rgba(224, 146, 47, 0.12);
+    --fb-red: #e5484d;
+    --fb-red-soft: rgba(229, 72, 77, 0.12);
+    --fb-teal: #0d9488;
+    --fb-teal-strong: #0f766e;
+    --fb-teal-soft: rgba(13, 148, 136, 0.12);
+
+    --fb-radius: 12px;
+    --fb-radius-sm: 8px;
+    --fb-radius-pill: 999px;
+
+    --background-primary: #ffffff;
+    --background-primary-alt: #f6f7f9;
+    --background-secondary: #f1f2f4;
+    --text-normal: #2b2b33;
+    --text-muted: #6b6f76;
+    --text-faint: #9a9ea6;
+    --fb-border: rgba(15, 18, 25, 0.10);
+    --fb-shadow: 0 1px 2px rgba(15, 18, 25, 0.04), 0 6px 20px rgba(15, 18, 25, 0.06);
+    --fb-shadow-hover: 0 2px 8px rgba(15, 18, 25, 0.06), 0 12px 32px rgba(15, 18, 25, 0.10);
+    --fb-track: rgba(15, 18, 25, 0.08);
+    --fb-row-hover: rgba(15, 18, 25, 0.03);
+    --canvas: #eef0f3;
+  }
+  .theme-dark {
+    --background-primary: #1e1f24;
+    --background-primary-alt: #25262c;
+    --background-secondary: #2a2b32;
+    --text-normal: #e4e4e8;
+    --text-muted: #a0a3ab;
+    --text-faint: #71747d;
+    --fb-border: rgba(255, 255, 255, 0.10);
+    --fb-shadow: 0 1px 2px rgba(0, 0, 0, 0.30), 0 6px 22px rgba(0, 0, 0, 0.35);
+    --fb-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.35), 0 14px 34px rgba(0, 0, 0, 0.45);
+    --fb-track: rgba(255, 255, 255, 0.10);
+    --fb-row-hover: rgba(255, 255, 255, 0.04);
+    --canvas: #16171b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: var(--font-ui); background: var(--canvas); color: var(--text-normal); -webkit-font-smoothing: antialiased; transition: background .3s ease, color .3s ease; }
+
+  .proto-bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; padding: 12px 22px; background: color-mix(in srgb, var(--background-primary) 86%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--fb-border); }
+  .proto-bar h1 { font-size: 14px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  .proto-bar .sub { font-size: 12px; color: var(--text-faint); margin-left: 8px; font-weight: 400; }
+  .theme-toggle { font: inherit; font-size: 12.5px; font-weight: 500; padding: 6px 14px; border-radius: var(--fb-radius-pill); border: 1px solid var(--fb-border); background: var(--background-primary); color: var(--text-normal); cursor: pointer; transition: .15s; }
+  .theme-toggle:hover { border-color: var(--fb-accent); color: var(--fb-accent); }
+
+  .reading { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  .reading > .doc-h { font-size: 26px; font-weight: 700; margin: 0 0 6px; }
+  .reading > .doc-sub { font-size: 13px; color: var(--text-muted); margin: 0 0 24px; line-height: 1.7; }
+  .reading > .doc-sub b { color: var(--text-normal); }
+  .reading > .doc-note { font-size: 12.5px; color: var(--text-muted); line-height: 1.7; background: var(--background-primary-alt); border: 1px solid var(--fb-border); border-left: 3px solid var(--fb-accent); border-radius: var(--fb-radius-sm); padding: 12px 16px; margin: 0 0 28px; }
+  .reading > .doc-note b { color: var(--text-normal); }
+
+  /* 每个视图区块 */
+  .view-section { scroll-margin-top: 120px; margin-bottom: 40px; }
+
+  /* 视图状态横幅（每个视图顶部标注） */
+  .view-banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--fb-radius-sm); background: var(--background-primary-alt); border: 1px solid var(--fb-border); margin: 0 0 14px; }
+  .view-banner .vb-icon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--fb-accent-soft); color: var(--fb-accent); flex-shrink: 0; }
+  .view-banner .vb-icon svg { width: 17px; height: 17px; }
+  .view-banner .vb-body { flex: 1; }
+  .view-banner .vb-title { font-size: 14px; font-weight: 700; }
+  .view-banner .vb-desc { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
+  .view-banner .vb-tag { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: var(--fb-radius-pill); background: var(--fb-accent); color: #fff; white-space: nowrap; }
+
+  /* 通用卡片 */
+  .finance-block { border: 1px solid var(--fb-border); border-radius: var(--fb-radius); padding: 14px 16px; background: var(--background-primary); box-shadow: var(--fb-shadow); font-size: 14px; line-height: 1.5; transition: box-shadow .2s ease; }
+  .finance-block:hover { box-shadow: var(--fb-shadow-hover); }
+  .fb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .fb-icon { width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: grid; place-items: center; background: var(--fb-accent-soft); color: var(--fb-accent); }
+  .fb-icon.is-teal { background: var(--fb-teal-soft); color: var(--fb-teal); }
+  .fb-icon svg { width: 16px; height: 16px; }
+  .fb-title { flex: 1; font-size: 14px; font-weight: 600; letter-spacing: .01em; }
+  .fb-pill { font-size: 12px; font-weight: 500; color: var(--text-muted); background: var(--background-secondary); border: 1px solid var(--fb-border); padding: 3px 11px; border-radius: var(--fb-radius-pill); white-space: nowrap; }
+  .fb-pill.is-accent { color: var(--fb-accent); background: var(--fb-accent-soft); border-color: transparent; }
+  .fb-pill.is-teal { color: var(--fb-teal); background: var(--fb-teal-soft); border-color: transparent; }
+  .fb-btn { font: inherit; font-size: 12.5px; font-weight: 500; padding: 6px 14px; border-radius: var(--fb-radius-pill); border: 1px solid var(--fb-border); background: var(--background-primary); color: var(--text-normal); cursor: pointer; transition: .15s; }
+  .fb-btn:hover { border-color: var(--fb-accent); color: var(--fb-accent); }
+  .fb-btn.is-cta { background: var(--fb-accent); color: #fff; border-color: var(--fb-accent); }
+  .fb-btn.is-cta:hover { background: var(--fb-accent-strong); color: #fff; }
+
+  /* 筛选工具栏 */
+  .log-filterbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .log-select, .log-search { font: inherit; font-size: 12.5px; padding: 6px 10px; border: 1px solid var(--fb-border); border-radius: var(--fb-radius-sm); background: var(--background-primary); color: var(--text-normal); }
+  .log-search { flex: 1; min-width: 160px; }
+  .log-select:focus, .log-search:focus { outline: none; border-color: var(--fb-accent); box-shadow: 0 0 0 3px var(--fb-accent-soft); }
+  .log-filterbar .flabel { font-size: 12px; color: var(--text-muted); }
+
+  /* 交易类型（kind）下拉筛选样式 */
+  .kind-pill { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: var(--fb-radius-pill); white-space: nowrap; }
+  .kind-pill[data-i="transfer"] { color: var(--fb-accent); background: var(--fb-accent-soft); }
+  .kind-pill[data-i="buy"] { color: var(--fb-teal); background: var(--fb-teal-soft); }
+  .kind-pill[data-i="sell"] { color: var(--fb-teal-strong); background: rgba(15,118,110,.12); }
+  .kind-pill[data-i="dividend"] { color: var(--fb-amber); background: var(--fb-amber-soft); }
+  .kind-pill[data-i="income"] { color: var(--fb-green); background: var(--fb-green-soft); }
+  .kind-pill[data-i="expense"] { color: var(--fb-red); background: var(--fb-red-soft); }
+
+  .bc-summary { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; margin: 0 0 14px; padding: 11px 13px; border-radius: var(--fb-radius-sm); background: var(--background-secondary); border: 1px solid var(--fb-border); font-size: 12.5px; color: var(--text-muted); }
+  .bc-summary .s-item { font-variant-numeric: tabular-nums; }
+  .bc-summary b { font-weight: 700; font-family: var(--font-mono); }
+  .bc-summary b.pos { color: var(--fb-green); }
+  .bc-summary b.neg { color: var(--fb-red); }
+
+  /* ── 流水：每笔一行，净变动突出，明细可展开 ── */
+  .reg-list { display: flex; flex-direction: column; gap: 8px; }
+  .reg-row { border: 1px solid var(--fb-border); border-radius: var(--fb-radius-sm); background: var(--background-secondary); padding: 11px 13px; transition: border-color .15s, box-shadow .15s; cursor: pointer; }
+  .reg-row:hover { border-color: var(--fb-accent); box-shadow: 0 0 0 3px var(--fb-accent-soft); }
+  .reg-main { display: flex; align-items: center; gap: 11px; }
+  .reg-date { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+  .reg-narr { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reg-dir { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: var(--fb-radius-pill); white-space: nowrap; flex-shrink: 0; }
+  .reg-dir.in { color: var(--fb-green); background: var(--fb-green-soft); }
+  .reg-dir.out { color: var(--fb-red); background: var(--fb-red-soft); }
+  .reg-dir.flat { color: var(--text-muted); background: var(--background-primary); border: 1px solid var(--fb-border); }
+  .reg-amt { font-family: var(--font-mono); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
+  .reg-amt.in { color: var(--fb-green); }
+  .reg-amt.out { color: var(--fb-red); }
+  .reg-amt.flat { color: var(--text-normal); }
+  .reg-sub { font-size: 10.5px; font-weight: 700; color: var(--fb-green); margin-left: 8px; white-space: nowrap; }
+
+  .reg-posts { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--fb-border); flex-direction: column; gap: 4px; }
+  .reg-row.is-open .reg-posts { display: flex; }
+  .reg-post { display: flex; align-items: baseline; gap: 9px; font-size: 12.5px; }
+  .reg-pacc { flex: 1; min-width: 0; font-family: var(--font-mono); color: var(--fb-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reg-lot { font-family: var(--font-mono); font-size: 10.5px; color: var(--fb-teal); font-weight: 700; flex-shrink: 0; }
+  .reg-pdir { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: var(--fb-radius-pill); white-space: nowrap; flex-shrink: 0; }
+  .reg-pdir.in { color: var(--fb-green); background: var(--fb-green-soft); }
+  .reg-pdir.out { color: var(--fb-red); background: var(--fb-red-soft); }
+  .reg-pdir.src { color: var(--fb-accent); background: var(--fb-accent-soft); }
+  .reg-pdir.sink { color: var(--fb-amber); background: var(--fb-amber-soft); }
+  .reg-pdir.flat { color: var(--text-muted); background: var(--background-primary); border: 1px solid var(--fb-border); }
+  .reg-pamt { font-family: var(--font-mono); font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+  .bc-empty { padding: 1.6em; text-align: center; color: var(--text-faint); font-style: italic; font-size: .85em; }
+  .log-caption { font-size: 11.5px; color: var(--text-faint); margin: 10px 2px 0; font-family: var(--font-mono); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+  <div class="proto-bar">
+    <div><h1>Finance Block</h1><span class="sub">finance-log · 流水面板原型 v2.5（流水查询 · 交易类型下拉 · 净变动）</span></div>
+    <button class="theme-toggle" id="toggle">切换深色</button>
+  </div>
+
+  <div class="reading">
+    <h1 class="doc-h">finance-log · 流水面板（v2.5）</h1>
+    <p class="doc-sub">账本内所有<b>已入账复式交易</b>的流水<b>查询面板</b>。v2.5 关键变化：<b>去掉分组</b>——本就是查询视图，直接按筛选条件铺开全部匹配记录（每笔一行、净变动由账户类别推导、点击行展开 leg 明细）；交易类型筛选为<b>下拉框</b>。<b>估值视图已移至 <code>finance-assets</code></b>（其资产总览内的「估值横条概览」），本块现在只负责流水浏览。</p>
+    <div class="doc-note">
+      <b>职责分离：</b><code>fin-beancount</code> 负责<b>草稿录入</b>与<b>入账存储</b>；本块（finance-log）只负责<b>流水浏览</b>；<code>finance-assets</code> 负责<b>当前市值仪表板 + 资产估值横条概览</b>。三块边界清晰。<br>
+      <b>金额不分正负：</b>录入时只填正数，借贷符号由系统按账户类别自动推导；界面里的方向（流入/流出/来源/去向）也由账户所属维度表达，而非数字正负。
+    </div>
+
+    <!-- ═══ 流水面板（register） ═══ -->
+    <section class="view-section" id="v-register">
+      <div class="view-banner">
+        <span class="vb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <div class="vb-body">
+          <div class="vb-title">流水面板（register）</div>
+          <div class="vb-desc">逐笔展示所有交易：每笔一行、净变动（流入/流出）由账户类别推导，方向而非正负表达；点击行展开看每条 leg 明细。数据源 = 账本内所有已入账复式交易（不含草稿）。</div>
+        </div>
+        <span class="vb-tag">交易明细</span>
+      </div>
+
+      <div class="finance-block finance-log">
+        <div class="fb-head">
+          <span class="fb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+          <span class="fb-title">流水面板</span>
+          <span class="fb-pill" id="rangePill">全部账目</span>
+        </div>
+
+        <div class="log-filterbar" id="filterBar">
+          <span class="flabel">交易类型</span>
+          <select class="log-select" id="kindSel">
+            <option value="">全部</option>
+            <option value="transfer">转账</option>
+            <option value="buy">买资产</option>
+            <option value="sell">卖资产</option>
+            <option value="dividend">分红</option>
+            <option value="income">收入</option>
+            <option value="expense">支出</option>
+          </select>
+          <select class="log-select" id="acctSel"><option value="">全部账户</option></select>
+          <input class="log-search" id="searchInput" placeholder="搜索摘要 / 账户…" />
+        </div>
+
+        <div class="bc-summary" id="logSummary"></div>
+        <div class="reg-list" id="reg"></div>
+      </div>
+    </section>
+  </div>
+
+<script>
+  const TODAY = '2026-08-02';
+
+  // ── 样例交易（金额单位：分；每种 kind 各留一条） ──
+  const TXNS = [
+    { id:'^t-2026080201', date:'2026-08-02', flag:'*', narration:'买腾讯', kind:'buy', type:'腾讯股票', owner:'自己', postings:[
+      {account:'资产:股票:腾讯', amount:10000, lot:'100 股 {100 CNY}'},
+      {account:'资产:现金', amount:-10000} ] },
+    { id:'^t-2026080101', date:'2026-08-01', flag:'*', narration:'工资入账', kind:'income', owner:'自己', postings:[
+      {account:'资产:活期', amount:1200000},
+      {account:'收入:工资', amount:-1200000} ] },
+    { id:'^t-2026073101', date:'2026-07-31', flag:'*', narration:'腾讯分红', kind:'dividend', owner:'自己', postings:[
+      {account:'资产:现金', amount:50000},
+      {account:'收入:投资收益', amount:-50000} ] },
+    { id:'^t-2026072901', date:'2026-07-29', flag:'*', narration:'午餐 牛肉面', kind:'expense', type:'餐饮', owner:'自己', postings:[
+      {account:'资产:现金', amount:-3500},
+      {account:'费用:餐饮', amount:3500} ] },
+    { id:'^t-2026072001', date:'2026-07-20', flag:'*', narration:'活期转现金', kind:'transfer', owner:'自己', postings:[
+      {account:'资产:活期', amount:-200000},
+      {account:'资产:现金', amount:200000} ] },
+    { id:'^t-2026050301', date:'2026-05-03', flag:'*', narration:'卖腾讯', kind:'sell', owner:'自己', postings:[
+      {account:'资产:现金', amount:11000},
+      {account:'资产:股票:腾讯', amount:-10000, lot:'-100 股 {100 CNY} @ 110 CNY'},
+      {account:'收入:投资收益', amount:-1000} ] },
+  ];
+
+  const KIND_LABEL = { transfer:'转账', buy:'买资产', sell:'卖资产', dividend:'分红', income:'收入', expense:'支出' };
+  const CLASS_MAP = {'资产':'asset','负债':'liability','权益':'equity','收入':'income','费用':'expense'};
+
+  const fmtY = (c) => '¥' + (Math.abs(c)/100).toLocaleString('zh-CN',{minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtSigned = (c) => (c>=0?'+':'-') + '¥' + (Math.abs(c)/100).toLocaleString('zh-CN',{minimumFractionDigits:2, maximumFractionDigits:2});
+  const classOf = (acc) => CLASS_MAP[acc.split(':')[0].trim()] || null;
+  const isAssetAcc = (acc) => classOf(acc) === 'asset';
+
+  let kindFilter = '';
+  let acctFilter = '';
+  let search = '';
+
+  const regEl = document.getElementById('reg');
+  const summary = document.getElementById('logSummary');
+
+  (function fillSelects(){
+    const accts = [...new Set(TXNS.flatMap(t=>t.postings.map(p=>p.account)))].sort();
+    const aSel = document.getElementById('acctSel');
+    accts.forEach(a => { const o=document.createElement('option'); o.value=a; o.textContent=a; aSel.appendChild(o); });
+  })();
+
+  function visibleTxns(){
+    return TXNS.filter(t => {
+      if (kindFilter && t.kind !== kindFilter) return false;
+      if (acctFilter && !t.postings.some(p=>p.account===acctFilter)) return false;
+      if (search) {
+        const hay = (t.narration + ' ' + t.postings.map(p=>p.account).join(' ')).toLowerCase();
+        if (!hay.includes(search.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }
+
+  // 每笔的「头条」金额与方向（净变动，符号由系统按账户类别推导）
+  function headline(t){
+    const assetPosts = t.postings.filter(p=>isAssetAcc(p.account));
+    const nonCashAsset = assetPosts.filter(p=>!/现金|活期/.test(p.account));
+    const assetDelta = assetPosts.reduce((s,p)=>s+p.amount,0);
+    const cashPost = t.postings.find(p=>/现金|活期/.test(p.account));
+    const gainPost = t.postings.find(p=>p.account.includes('投资收益'));
+    let amount, dir, cls, sub='';
+    if (t.kind==='income'){ amount=Math.abs(assetDelta); dir='流入'; cls='in'; }
+    else if (t.kind==='expense'){ amount=Math.abs(assetDelta); dir='流出'; cls='out'; }
+    else if (t.kind==='dividend'){ amount=Math.abs(assetDelta); dir='流入'; cls='in'; }
+    else if (t.kind==='transfer'){ amount=Math.abs(assetDelta); dir='转账'; cls='flat'; }
+    else if (t.kind==='buy'){ amount = nonCashAsset.length?Math.abs(nonCashAsset[0].amount):Math.abs(assetDelta); dir='买入资产'; cls='flat'; }
+    else if (t.kind==='sell'){ amount = cashPost?Math.abs(cashPost.amount):Math.abs(assetDelta); dir='卖出资产'; cls='flat';
+      if(gainPost) sub = '已实现 ' + fmtSigned(Math.abs(gainPost.amount)); }
+    return { amount, dir, cls, sub };
+  }
+
+  // 每条 leg 的展示：金额取正值，方向用标签（流入/流出/来源/去向）
+  function postingLine(p){
+    const c = classOf(p.account);
+    const inc = p.amount > 0;
+    let label, cls;
+    if (c==='asset'){ label = inc?'流入':'流出'; cls = inc?'in':'out'; }
+    else if (c==='liability'){ label = inc?'流出':'流入'; cls = inc?'out':'in'; }
+    else if (c==='income'){ label='来源'; cls='src'; }
+    else if (c==='expense'){ label='去向'; cls='sink'; }
+    else { label='权益'; cls='flat'; }
+    const lot = p.lot?`<span class="reg-lot">${p.lot}</span>`:'';
+    return `<div class="reg-post"><span class="reg-pacc">${p.account}</span>${lot}<span class="reg-pdir ${cls}">${label}</span><span class="reg-pamt">${fmtY(Math.abs(p.amount))}</span></div>`;
+  }
+
+  function renderRegister(){
+    const txns = visibleTxns().slice().sort((a,b)=> a.date < b.date ? 1 : -1);
+    if (txns.length === 0){ regEl.innerHTML = '<div class="bc-empty">没有符合条件的记录</div>'; summary.innerHTML=''; return; }
+
+    regEl.innerHTML = txns.map(t=>{
+      const h = headline(t);
+      const sign = h.cls==='in' ? '+' : (h.cls==='out' ? '-' : '');
+      const posts = t.postings.map(postingLine).join('');
+      const gain = h.sub ? `<span class="reg-sub">${h.sub}</span>` : '';
+      return `<div class="reg-row" data-id="${t.id}">
+        <div class="reg-main">
+          <span class="reg-date">${t.date.slice(5)}</span>
+          <span class="kind-pill" data-i="${t.kind}">${KIND_LABEL[t.kind]}</span>
+          <span class="reg-narr">${t.narration}</span>
+          <span class="reg-dir ${h.cls}">${h.dir}</span>
+          <span class="reg-amt ${h.cls}">${sign}${fmtY(h.amount)}</span>${gain}
+        </div>
+        <div class="reg-posts">${posts}</div>
+      </div>`;
+    }).join('');
+
+    regEl.querySelectorAll('.reg-row').forEach(r=>{
+      r.addEventListener('click', ()=> r.classList.toggle('is-open'));
+    });
+    updateSummary();
+  }
+
+  function updateSummary(){
+    const txns = visibleTxns();
+    let income=0, expense=0;
+    txns.forEach(t=>{
+      const assetDelta = t.postings.filter(p=>isAssetAcc(p.account)).reduce((s,p)=>s+p.amount,0);
+      if (t.kind==='income' || t.kind==='dividend') income += Math.abs(assetDelta);
+      else if (t.kind==='expense') expense += Math.abs(assetDelta);
+    });
+    const net = income - expense;
+    summary.innerHTML =
+      `<span class="s-item">共 <b>${txns.length}</b> 笔</span>`
+      + `<span class="s-item">收入 <b class="pos">${fmtY(income)}</b></span>`
+      + `<span class="s-item">支出 <b class="neg">${fmtY(expense)}</b></span>`
+      + `<span class="s-item">净额 <b class="${net>=0?'pos':'neg'}">${fmtSigned(net)}</b></span>`;
+    document.getElementById('rangePill').textContent = `全部账目 · ${TXNS.length} 笔`;
+  }
+
+  // 事件
+  document.getElementById('kindSel').addEventListener('change', e=>{ kindFilter=e.target.value; renderRegister(); });
+  document.getElementById('acctSel').addEventListener('change', e=>{ acctFilter=e.target.value; renderRegister(); });
+  document.getElementById('searchInput').addEventListener('input', e=>{ search=e.target.value; renderRegister(); });
+
+  // 初始渲染：仅流水面板（无分组，直接铺开筛选结果）
+  renderRegister();
+
+  const toggle = document.getElementById('toggle');
+  toggle.addEventListener('click', ()=>{
+    const dark = document.body.classList.toggle('theme-dark');
+    toggle.textContent = dark ? '切换浅色' : '切换深色';
+  });
+</script>
+</body>
+</html>

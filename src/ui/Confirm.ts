@@ -56,6 +56,11 @@ export function confirmWithModal(
       if (first) first.focus();
     };
 
+    // Escape / 点击遮罩关闭时，确保 Promise 不会永远 pending
+    modal.onClose = () => {
+      finish(false);
+    };
+
     modal.open();
   });
 }

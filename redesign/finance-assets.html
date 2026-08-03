@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Finance Block · finance-assets 新版设计系统预览</title>
+<style>
+  /* ── 模拟 Obsidian 主题变量（明/暗） ── */
+  :root {
+    --interactive-accent: #7c5cff;
+    --interactive-accent-hover: #6a48f5;
+    --interactive-accent-soft: rgba(124, 92, 255, 0.12);
+    --background-primary: #ffffff;
+    --background-primary-alt: #f6f7f9;
+    --background-secondary: #f1f2f4;
+    --text-normal: #2b2b33;
+    --text-muted: #6b6f76;
+    --text-faint: #9a9ea6;
+    --background-modifier-border: rgba(15, 18, 25, 0.10);
+    --text-on-accent: #ffffff;
+    --font-text-size: 16px;
+    --font-monospace: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --font-ui-small: 13px;
+    --font-ui-smaller: 11.5px;
+  }
+  .theme-dark {
+    --interactive-accent: #8b6cff;
+    --interactive-accent-hover: #7c5cff;
+    --interactive-accent-soft: rgba(124, 92, 255, 0.16);
+    --background-primary: #1e1f24;
+    --background-primary-alt: #25262c;
+    --background-secondary: #2a2b32;
+    --text-normal: #e4e4e8;
+    --text-muted: #a0a3ab;
+    --text-faint: #71747d;
+    --background-modifier-border: rgba(255, 255, 255, 0.10);
+    --text-on-accent: #ffffff;
+  }
+
+  /* ── 以下整段等价于插件 styles.css 的 .finance-block 命名空间（节选 finance-assets 所需） ── */
+
+  .finance-block {
+    --fb-accent: var(--interactive-accent, #7c5cff);
+    --fb-accent-strong: var(--interactive-accent-hover, #6a48f5);
+    --fb-accent-soft: rgba(124, 92, 255, 0.12);
+    --fb-radius: 10px;
+    --fb-radius-sm: 8px;
+    --fb-radius-pill: 999px;
+    --fb-border: var(--background-modifier-border, rgba(120, 120, 140, 0.2));
+    --fb-green: #34a853;
+    --fb-green-soft: rgba(52, 168, 83, 0.12);
+    --fb-amber: #f5a623;
+    --fb-amber-soft: rgba(245, 166, 35, 0.12);
+    --fb-red: #ea4335;
+    --fb-red-soft: rgba(234, 67, 53, 0.12);
+    --fb-blue: #2f6fed;
+    --fb-blue-soft: rgba(47, 111, 237, 0.14);
+    --fb-teal: #14a3a3;
+    --fb-teal-strong: #0f766e;
+    --fb-teal-soft: rgba(20, 163, 163, 0.14);
+    --fb-track: var(--background-modifier-border, rgba(120, 120, 140, 0.2));
+    --fb-font-mono: var(--font-monospace);
+
+    border: 1px solid var(--fb-border);
+    border-radius: var(--fb-radius);
+    padding: 1em 1.2em;
+    margin: 0.5em 0;
+    background: var(--background-primary-alt, var(--background-secondary));
+    font-size: var(--font-text-size, 16px);
+  }
+
+  .finance-block .fb-head { display: flex; align-items: center; gap: 0.6em; margin-bottom: 0.9em; }
+  .finance-block .fb-icon {
+    width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+    display: grid; place-items: center;
+    background: var(--fb-accent-soft); color: var(--fb-accent);
+  }
+  .finance-block .fb-icon svg { width: 16px; height: 16px; }
+  .finance-block .fb-title { flex: 1; font-size: 1.15em; font-weight: 600; letter-spacing: 0.01em; }
+  .finance-block .fb-pill {
+    font-size: 1em; font-weight: 500; color: var(--text-muted);
+    background: var(--background-secondary); border: 1px solid var(--fb-border);
+    padding: 0.2em 0.7em; border-radius: var(--fb-radius-pill); white-space: nowrap;
+  }
+  .finance-block .fb-pill.is-accent { color: var(--fb-accent); background: var(--fb-accent-soft); border-color: transparent; }
+  .finance-block .fb-pill.is-teal { color: var(--fb-teal); background: var(--fb-teal-soft); border-color: transparent; }
+
+  .finance-block .fb-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.6em; margin: 0 0 0.9em;
+  }
+  .finance-block .fb-metric {
+    padding: 0.6em 0.8em; border-radius: var(--fb-radius-sm);
+    background: var(--background-secondary); border: 1px solid var(--fb-border);
+  }
+  .finance-block .fb-metric .m-label { font-size: 1em; color: var(--text-muted); margin-bottom: 0.2em; }
+  .finance-block .fb-metric .m-value {
+    font-size: 1.2em; font-weight: 600; font-family: var(--fb-font-mono);
+    font-variant-numeric: tabular-nums; color: var(--text-normal);
+  }
+
+  /* ── finance-assets 新版设计系统（与插件 styles.css 完全对应） ── */
+
+  .finance-block.finance-assets .fb-icon.is-teal {
+    background: var(--fb-teal-soft); color: var(--fb-teal);
+  }
+  .finance-block.finance-assets .fb-pill.is-teal {
+    color: var(--fb-teal); background: var(--fb-teal-soft); border-color: transparent;
+  }
+
+  .finance-block.finance-assets .networth-h {
+    display: flex; align-items: baseline; gap: 0.5em; margin-bottom: 0.6em;
+  }
+  .finance-block.finance-assets .nw-label {
+    font-size: 1.05em; font-weight: 600; color: var(--text-normal);
+  }
+  .finance-block.finance-assets .nw-value {
+    font-size: 1.75em; font-weight: 700; font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em; color: var(--text-normal);
+  }
+
+  .finance-block.finance-assets .fb-grid { margin-bottom: 0.8em; }
+  .finance-block.finance-assets .fb-metric .m-value.is-pos { color: var(--fb-green); }
+  .finance-block.finance-assets .fb-metric .m-value.is-neg { color: var(--fb-red); }
+
+  .finance-block.finance-assets .alloc-title {
+    font-size: var(--font-ui-small, 13px); font-weight: 600; color: var(--text-muted);
+    margin: 0.2em 0 0.4em;
+  }
+  .finance-block.finance-assets .alloc-bar {
+    display: flex; height: 12px; border-radius: 999px; overflow: hidden;
+    background: var(--fb-track); margin-bottom: 0.5em;
+  }
+  .finance-block.finance-assets .alloc-seg { height: 100%; }
+  .finance-block.finance-assets .alloc-legend {
+    display: flex; flex-wrap: wrap; gap: 0.6em;
+    font-size: var(--font-ui-smaller, 11.5px); color: var(--text-muted); margin-bottom: 1em;
+  }
+  .finance-block.finance-assets .alloc-legend-item { display: inline-flex; align-items: center; gap: 0.3em; }
+  .finance-block.finance-assets .alloc-dot {
+    width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex-shrink: 0;
+  }
+  .finance-block.finance-assets .alloc-pct { font-variant-numeric: tabular-nums; }
+
+  .finance-block.finance-assets .as-section { margin-bottom: 1em; }
+  .finance-block.finance-assets .as-liabilities { margin-top: 0.4em; }
+  .finance-block.finance-assets .section-title {
+    font-size: var(--font-ui-small, 13px); font-weight: 700; color: var(--text-normal);
+    margin: 0.6em 0 0.5em; display: flex; align-items: center; gap: 0.4em;
+  }
+  .finance-block.finance-assets .section-title .hint {
+    font-size: var(--font-ui-smaller, 11px); font-weight: 400; color: var(--text-faint);
+  }
+  .finance-block.finance-assets .as-group-label {
+    font-size: var(--font-ui-smaller, 11px); font-weight: 600; color: var(--text-muted);
+    margin: 0.3em 0 0.3em;
+  }
+  .finance-block.finance-assets .asset-grid {
+    display: flex; flex-direction: column; gap: 0.5em;
+  }
+  @media (max-width: 620px) {
+    .finance-block.finance-assets .fb-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .finance-block.finance-assets .asset-card {
+    border: 1px solid var(--fb-border); border-radius: var(--fb-radius-sm);
+    padding: 0.7em 0.85em; background: var(--background-primary);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .finance-block.finance-assets .asset-card:hover {
+    border-color: var(--fb-teal); box-shadow: 0 0 0 3px var(--fb-teal-soft);
+  }
+  .finance-block.finance-assets .asset-card.is-invest { border-color: rgba(20, 163, 163, 0.3); }
+  .finance-block.finance-assets .asset-card.is-invest:hover {
+    border-color: var(--fb-teal); box-shadow: 0 0 0 3px var(--fb-teal-soft);
+  }
+  .finance-block.finance-assets .asset-row { display: flex; align-items: center; gap: 0.4em; }
+  .finance-block.finance-assets .asset-ico {
+    width: 26px; height: 26px; border-radius: var(--fb-radius-sm); flex-shrink: 0;
+    display: grid; place-items: center; font-size: 1em;
+    background: var(--background-secondary); border: 1px solid var(--fb-border);
+  }
+  .finance-block.finance-assets .asset-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.2em; }
+  .finance-block.finance-assets .asset-name {
+    font-size: 1em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .finance-block.finance-assets .asset-tags { display: flex; flex-wrap: wrap; gap: 0.25em; }
+  .finance-block.finance-assets .asset-tag {
+    font-size: var(--font-ui-smaller, 11px); font-weight: 500; padding: 0.1em 0.45em;
+    border-radius: var(--fb-radius-pill); border: 1px solid var(--fb-border);
+    background: var(--background-primary); color: var(--text-muted); white-space: nowrap;
+  }
+  .finance-block.finance-assets .asset-tag.owner { background: var(--fb-accent-soft); color: var(--fb-accent); border-color: transparent; }
+  .finance-block.finance-assets .asset-tag.method { background: var(--fb-teal-soft); color: var(--fb-teal); border-color: transparent; }
+  .finance-block.finance-assets .asset-tag.stale { background: var(--fb-amber-soft); color: var(--fb-amber); border-color: transparent; }
+  .finance-block.finance-assets .asset-amt {
+    font-family: var(--fb-font-mono); font-size: 1.05em; font-weight: 700;
+    font-variant-numeric: tabular-nums; text-align: right; flex-shrink: 0;
+  }
+  .finance-block.finance-assets .asset-amt.is-neg { color: var(--fb-red); }
+
+  .finance-block.finance-assets .asset-book {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.4em;
+    margin-top: 0.4em; padding-top: 0.4em; border-top: 1px dashed var(--fb-border);
+    font-size: var(--font-ui-smaller, 11.5px); color: var(--text-muted);
+  }
+  .finance-block.finance-assets .asset-book .ab-left { display: flex; align-items: center; gap: 0.4em; min-width: 0; }
+  .finance-block.finance-assets .ab-book { white-space: nowrap; }
+  .finance-block.finance-assets .asset-book .ab-right { display: flex; align-items: baseline; gap: 0.4em; flex-shrink: 0; }
+  .finance-block.finance-assets .delta { font-family: var(--fb-font-mono); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .finance-block.finance-assets .delta.is-pos { color: var(--fb-green); }
+  .finance-block.finance-assets .delta.is-neg { color: var(--fb-red); }
+  .finance-block.finance-assets .realized-badge {
+    font-size: var(--font-ui-smaller, 10px); font-weight: 700; font-variant-numeric: tabular-nums;
+    padding: 0.1em 0.45em; border-radius: var(--fb-radius-pill); white-space: nowrap;
+    color: var(--fb-green); background: var(--fb-green-soft);
+  }
+  .finance-block.finance-assets .realized-badge.is-neg { color: var(--fb-red); background: var(--fb-red-soft); }
+
+  .finance-block.finance-assets .as-icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
+    background: var(--fb-teal-soft); color: var(--fb-teal); cursor: pointer; transition: 0.15s;
+  }
+  .finance-block.finance-assets .as-icon-btn:hover { background: var(--fb-teal); color: #fff; }
+  .finance-block.finance-assets .as-icon-btn svg { display: block; }
+
+  /* 镜像插件 styles.css：更新估值弹窗（含锁定态） */
+  .valuation-modal h2 { display: flex; align-items: center; gap: 0.45em; }
+  .valuation-modal .fb-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; flex-shrink: 0;
+    background: var(--fb-teal-soft); color: var(--fb-teal);
+    border-radius: var(--fb-radius-sm);
+  }
+  .valuation-modal .fb-icon svg { width: 18px; height: 18px; display: block; }
+  .valuation-modal .vm-account-lock {
+    display: flex; align-items: center; gap: 0.6em;
+    padding: 0.5em 0.7em; border: 1px solid var(--fb-teal); border-radius: var(--fb-radius-sm);
+    background: var(--fb-teal-soft);
+    font-family: var(--fb-font-mono); font-variant-numeric: tabular-nums;
+  }
+  .valuation-modal .vm-lock-name { font-weight: 700; color: var(--fb-teal); }
+  .valuation-modal .vm-lock-badge { font-size: var(--font-ui-smaller, 11px); color: var(--text-muted); }
+
+  .finance-block.finance-assets .lot-head {
+    display: flex; align-items: center; gap: 0.3em; margin-top: 0.5em; padding-top: 0.4em;
+    border-top: 1px dashed var(--fb-border);
+    font-size: var(--font-ui-smaller, 11px); font-weight: 700; color: var(--fb-teal);
+  }
+  .finance-block.finance-assets .lot-list { display: flex; flex-direction: column; gap: 0.25em; margin-top: 0.35em; }
+  .finance-block.finance-assets .lot-row {
+    display: flex; align-items: center; gap: 0.5em; padding: 0.35em 0.5em;
+    border-radius: var(--fb-radius-sm); background: var(--background-secondary);
+    border: 1px solid var(--fb-border);
+  }
+  .finance-block.finance-assets .lot-main { flex: 1; min-width: 0; }
+  .finance-block.finance-assets .lr-name {
+    font-size: var(--font-ui-small, 12.5px); font-weight: 600; display: flex; align-items: center; gap: 0.3em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .finance-block.finance-assets .lr-name .tick {
+    font-family: var(--fb-font-mono); font-size: 10px; color: var(--text-faint); font-weight: 400;
+  }
+  .finance-block.finance-assets .lr-sub {
+    font-family: var(--fb-font-mono); font-size: var(--font-ui-smaller, 10.5px);
+    color: var(--text-faint); margin-top: 0.1em;
+  }
+  .finance-block.finance-assets .lr-metrics { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex-shrink: 0; }
+  .finance-block.finance-assets .lr-mkt { font-family: var(--fb-font-mono); font-size: var(--font-ui-small, 12.5px); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .finance-block.finance-assets .lr-gain { font-family: var(--fb-font-mono); font-size: var(--font-ui-smaller, 10.5px); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .finance-block.finance-assets .lr-gain.is-pos { color: var(--fb-green); }
+  .finance-block.finance-assets .lr-gain.is-neg { color: var(--fb-red); }
+  .finance-block.finance-assets .lr-realized {
+    font-size: var(--font-ui-smaller, 10px); font-weight: 700; font-variant-numeric: tabular-nums;
+    padding: 0.1em 0.45em; border-radius: var(--fb-radius-pill);
+    color: var(--fb-green); background: var(--fb-green-soft); flex-shrink: 0; white-space: nowrap;
+  }
+  .finance-block.finance-assets .lr-realized.is-neg { color: var(--fb-red); background: var(--fb-red-soft); }
+
+  .finance-block.finance-assets .liability-list { display: flex; flex-direction: column; gap: 0.4em; }
+  .finance-block.finance-assets .liability-card {
+    display: flex; align-items: center; gap: 0.5em; border: 1px solid var(--fb-border);
+    border-radius: var(--fb-radius-sm); padding: 0.5em 0.7em; background: var(--background-primary);
+  }
+  .finance-block.finance-assets .liability-card .asset-amt { margin-left: auto; }
+
+  .finance-block.finance-assets .fb-footnote {
+    margin-top: 0.8em; padding-top: 0.6em; border-top: 1px solid var(--fb-border);
+    font-size: var(--font-ui-smaller, 11px); color: var(--text-faint); font-style: italic;
+  }
+
+  .finance-block.finance-assets .as-recon {
+    display: flex; align-items: flex-start; gap: 0.5em;
+    margin: 0 0 0.8em; padding: 0.5em 0.7em;
+    border-radius: var(--fb-radius-sm);
+    border: 1px solid var(--fb-amber-soft);
+    background: var(--fb-amber-soft);
+  }
+  .finance-block.finance-assets .as-recon-icon { color: var(--fb-amber); flex-shrink: 0; display: flex; margin-top: 1px; }
+  .finance-block.finance-assets .as-recon-body { min-width: 0; }
+  .finance-block.finance-assets .as-recon-title {
+    font-size: var(--font-ui-small, 12px); font-weight: 600; color: var(--fb-amber);
+    font-variant-numeric: tabular-nums;
+  }
+  .finance-block.finance-assets .as-recon-desc { font-size: var(--font-ui-smaller, 11px); color: var(--text-muted); margin-top: 0.15em; }
+
+  .finance-block.finance-assets .as-empty { text-align: center; padding: 2em; color: var(--text-muted); }
+
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--background-secondary); padding: 40px 16px; transition: background .3s, color .3s; }
+  .stage { max-width: 820px; margin: 0 auto; }
+  .bar { position: sticky; top: 0; z-index: 10; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: color-mix(in srgb, var(--background-primary) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--fb-border); margin: -40px -16px 24px; }
+  .bar h1 { font-size: 14px; margin: 0; }
+  .bar button { font: inherit; font-size: 12.5px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--fb-border); background: var(--background-primary); color: var(--text-normal); cursor: pointer; }
+  .bar button:hover { border-color: var(--fb-accent); color: var(--fb-accent); }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <h1>finance-assets · 新版设计系统预览</h1>
+    <button id="toggle">切换深色</button>
+  </div>
+
+  <div class="stage">
+    <!-- 以下 DOM 结构完全对应 assets.ts 的新版渲染输出 -->
+    <div class="finance-block finance-assets">
+      <div class="fb-head">
+        <span class="fb-icon is-teal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 4 5-8 4 5"/><path d="M3 21h18"/></svg>
+        </span>
+        <span class="fb-title">资产总览</span>
+        <span class="fb-pill is-teal">市值口径 · 含持仓</span>
+        <span class="fb-pill is-accent">自己</span>
+      </div>
+
+      <div class="networth-h">
+        <span class="nw-label">净资产（市值）</span>
+        <span class="nw-value">¥65.0万</span>
+      </div>
+
+      <div class="fb-grid">
+        <div class="fb-metric"><div class="m-label">总资产</div><div class="m-value">¥65.1万</div></div>
+        <div class="fb-metric"><div class="m-label">总负债</div><div class="m-value">¥8000</div></div>
+        <div class="fb-metric"><div class="m-label">未实现损益</div><div class="m-value is-pos">+¥18.4万</div></div>
+        <div class="fb-metric"><div class="m-label">已实现收益</div><div class="m-value is-pos">+¥1000</div></div>
+      </div>
+
+      <div class="as-recon">
+        <span class="as-recon-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </span>
+        <div class="as-recon-body">
+          <div class="as-recon-title">对账差额 +¥2000　1 个账户未声明类别</div>
+          <div class="as-recon-desc">「资产 − 负债」应恒等于「权益 + 本期留存」。差额通常来自账户未在设置里声明五大类，或有交易未配平。</div>
+        </div>
+      </div>
+
+      <div class="alloc-title">资产配置（按类别）</div>
+      <div class="alloc-bar">
+        <div class="alloc-seg" style="width:25.2%;background:#34a853"></div>
+        <div class="alloc-seg" style="width:20.9%;background:#f5a623"></div>
+        <div class="alloc-seg" style="width:6.8%;background:#14a3a3"></div>
+        <div class="alloc-seg" style="width:0.02%;background:#9a9ea6"></div>
+      </div>
+      <div class="alloc-legend">
+        <span class="alloc-legend-item"><i class="alloc-dot" style="background:#34a853"></i>房产 25.2%</span>
+        <span class="alloc-legend-item"><i class="alloc-dot" style="background:#f5a623"></i>车 20.9%</span>
+        <span class="alloc-legend-item"><i class="alloc-dot" style="background:#14a3a3"></i>股票 6.8%</span>
+        <span class="alloc-legend-item"><i class="alloc-dot" style="background:#9a9ea6"></i>现金 0.02%</span>
+      </div>
+
+      <div class="as-section">
+        <div class="section-title">资产<span class="hint">（投资类按持仓展开）</span></div>
+        <div class="asset-grid">
+
+          <!-- 投资类：父卡片 + 持仓明细（父卡片不带更新估值按钮） -->
+          <div class="asset-card is-invest">
+            <div class="asset-row">
+              <div class="asset-ico">📈</div>
+              <div class="asset-main">
+                <div class="asset-name">资产:股票</div>
+                <div class="asset-tags">
+                  <span class="asset-tag owner">自己</span>
+                  <span class="asset-tag method">市值</span>
+                </div>
+              </div>
+              <div class="asset-amt">¥3.3万</div>
+            </div>
+            <div class="asset-book">
+              <div class="ab-left">
+                <span class="ab-book">账面 ¥3.0万</span>
+              </div>
+              <div class="ab-right">
+                <span class="delta is-pos">未实现 +¥3000</span>
+                <span class="realized-badge is-pos">已实现 +¥1000</span>
+              </div>
+            </div>
+            <div class="lot-head">持仓明细（2 只）</div>
+            <div class="lot-list">
+              <div class="lot-row">
+                <div class="lot-main">
+                  <div class="lr-name">腾讯<span class="tick">0700.HK</span></div>
+                  <div class="lr-sub">账面 ¥1.0万 → ¥1.1万</div>
+                </div>
+                <div class="lr-metrics">
+                  <span class="lr-mkt">¥1.1万</span>
+                  <span class="lr-gain is-pos">+¥1000</span>
+                </div>
+                <span class="lr-realized is-pos">已实现 +¥1000</span>
+                <button class="as-icon-btn" title="更新估值" aria-label="更新估值">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </button>
+              </div>
+              <div class="lot-row">
+                <div class="lot-main">
+                  <div class="lr-name">茅台<span class="tick">600519</span></div>
+                  <div class="lr-sub">账面 ¥2.0万 → ¥2.2万</div>
+                </div>
+                <div class="lr-metrics">
+                  <span class="lr-mkt">¥2.2万</span>
+                  <span class="lr-gain is-pos">+¥2000</span>
+                </div>
+                <button class="as-icon-btn" title="更新估值" aria-label="更新估值">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 房产：估值 + 过期标黄 + 更新按钮 -->
+          <div class="asset-card">
+            <div class="asset-row">
+              <div class="asset-main">
+                <div class="asset-ico">🏠</div>
+                <div class="asset-name">资产:房产</div>
+                <div class="asset-tags">
+                  <span class="asset-tag owner">自己</span>
+                  <span class="asset-tag method">市值</span>
+                  <span class="asset-tag stale">估值已过期</span>
+                </div>
+              </div>
+              <div class="asset-amt">¥1980.0万</div>
+            </div>
+            <div class="asset-book">
+              <div class="ab-left">
+                <button class="as-icon-btn" title="更新估值" aria-label="更新估值">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </button>
+                <span class="ab-book">账面 ¥1800.0万</span>
+              </div>
+              <div class="ab-right">
+                <span class="delta is-pos">未实现 +¥180.0万</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 车：折旧 + 未实现为负 -->
+          <div class="asset-card">
+            <div class="asset-row">
+              <div class="asset-main">
+                <div class="asset-ico">🚗</div>
+                <div class="asset-name">资产:车</div>
+                <div class="asset-tags">
+                  <span class="asset-tag owner">自己</span>
+                  <span class="asset-tag method">折旧</span>
+                </div>
+              </div>
+              <div class="asset-amt">¥1640.0万</div>
+            </div>
+            <div class="asset-book">
+              <div class="ab-left">
+                <span class="ab-book">账面 ¥2000.0万</span>
+              </div>
+              <div class="ab-right">
+                <span class="delta is-neg">未实现 -¥360.0万</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 现金：book 计价，信息量低时仅显示市值 -->
+          <div class="asset-card">
+            <div class="asset-row">
+              <div class="asset-main">
+                <div class="asset-ico">💵</div>
+                <div class="asset-name">资产:现金</div>
+                <div class="asset-tags">
+                  <span class="asset-tag owner">自己</span>
+                </div>
+              </div>
+              <div class="asset-amt">¥145.5</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="as-section as-liabilities">
+        <div class="section-title">负债</div>
+        <div class="liability-list">
+          <div class="liability-card">
+            <div class="asset-main">
+              <div class="asset-ico">🏦</div>
+              <div class="asset-name">负债:房贷</div>
+              <div class="asset-tags">
+                <span class="asset-tag owner">自己</span>
+              </div>
+            </div>
+            <div class="asset-amt">¥8000</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="fb-footnote">估值来自账本内 custom "fb-valuation" 指令行；草稿块中的估值不计入</div>
+    </div>
+  </div>
+
+  <script>
+    const toggle = document.getElementById('toggle');
+    toggle.addEventListener('click', () => {
+      const dark = document.body.classList.toggle('theme-dark');
+      toggle.textContent = dark ? '切换浅色' : '切换深色';
+    });
+  </script>
+</body>
+</html>

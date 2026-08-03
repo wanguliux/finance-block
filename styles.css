@@ -21,6 +21,7 @@
   --fb-blue: #2f6fed;
   --fb-blue-soft: rgba(47, 111, 237, 0.14);
   --fb-teal: #14a3a3;
+  --fb-teal-strong: #0f766e;
   --fb-teal-soft: rgba(20, 163, 163, 0.14);
   --fb-pink: #e0507a;
   --fb-pink-soft: rgba(224, 80, 122, 0.14);
@@ -120,6 +121,16 @@
 .finance-block.fin-beancount .bc-flag.pending { color: var(--fb-amber); background: var(--fb-amber-soft); }
 .finance-block.fin-beancount .bc-flag.cleared { color: var(--fb-green); background: var(--fb-green-soft); }
 
+/* 草稿卡片上的「入账」按钮（逐笔入账） */
+.finance-block.fin-beancount .bc-post-one {
+  margin-left: auto; flex-shrink: 0;
+  font-size: 0.95em; font-weight: 700; font-family: var(--font-ui);
+  padding: 0.18em 0.7em; border-radius: var(--fb-radius-pill);
+  border: 1px solid var(--fb-accent); background: var(--fb-accent); color: var(--text-on-accent, #fff);
+  cursor: pointer; transition: .15s;
+}
+.finance-block.fin-beancount .bc-post-one:hover { background: var(--fb-accent-strong); border-color: var(--fb-accent-strong); }
+
 .finance-block.fin-beancount .bc-postings { display: flex; flex-direction: column; gap: 0.2em; padding-left: 0.15em; }
 .finance-block.fin-beancount .bc-posting { display: flex; align-items: baseline; gap: 0.6em; }
 .finance-block.fin-beancount .bc-posting .acc { flex: 1; min-width: 0; font-family: var(--fb-font-mono); font-size: 1.05em; color: var(--fb-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -127,18 +138,35 @@
 .finance-block.fin-beancount .bc-posting .amt.neg { color: var(--fb-red); }
 .finance-block.fin-beancount .bc-posting .amt.pos { color: var(--fb-green); }
 
+/* 方向标签（流入/流出/来源/去向）：替代数字正负，按账户所属维度表达借贷方向。
+   与 fin-beancount.html / finance-log.html 原型共用同一套配色 token。 */
+.finance-block .pdir { font-size: 0.72em; font-weight: 700; padding: 0.1em 0.5em; border-radius: var(--fb-radius-pill); white-space: nowrap; flex-shrink: 0; line-height: 1.4; }
+.finance-block .pdir.in { color: var(--fb-green); background: var(--fb-green-soft); }
+.finance-block .pdir.out { color: var(--fb-red); background: var(--fb-red-soft); }
+.finance-block .pdir.src { color: var(--fb-accent); background: var(--fb-accent-soft); }
+.finance-block .pdir.sink { color: var(--fb-amber); background: var(--fb-amber-soft); }
+.finance-block .pdir.flat { color: var(--fb-text-faint); background: var(--background-primary); border: 1px solid var(--fb-border); }
+
+/* 交易类型 pill（受管词表，中性展示；不再是可判定收支的 label） */
+.finance-block .type-pill { font-size: 0.72em; font-weight: 700; padding: 0.1em 0.5em; border-radius: var(--fb-radius-pill); white-space: nowrap; color: var(--fb-accent); background: var(--fb-accent-soft); }
+
 .finance-block.fin-beancount .bc-meta-line { display: flex; flex-wrap: wrap; gap: 0.4em; margin-top: 0.5em; padding-top: 0.5em; border-top: 1px dashed var(--fb-border); }
 .finance-block.fin-beancount .bc-meta-tag { font-family: var(--fb-font-mono); font-size: 1em; color: var(--fb-text-faint); background: var(--background-primary); border: 1px solid var(--fb-border); padding: 0.08em 0.45em; border-radius: 5px; }
+/* 软告警 / 错误标签（交易卡片与估值卡片通用）；warn 悬停出完整解释 */
+.finance-block.fin-beancount .bc-meta-tag.warn { color: var(--fb-amber); background: var(--fb-amber-soft); border-color: transparent; font-weight: 700; cursor: help; }
+.finance-block.fin-beancount .bc-meta-tag.err { color: var(--fb-red); background: var(--fb-red-soft); border-color: transparent; font-weight: 700; }
 
-/* 单条记录复制按钮（已入账态，供 finance-log 精准查询） */
+/* 单条记录复制按钮（图标 + "复制" 文本，明暗自适应） */
 .finance-block.fin-beancount .bc-copy {
-  width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0; margin-left: 0.15em; margin-left: auto;
-  display: grid; place-items: center;
+  display: inline-flex; align-items: center; gap: 0.3em;
+  font: inherit; font-size: 0.85em; font-weight: 600;
+  padding: 0.25em 0.65em; border-radius: var(--fb-radius-sm);
   border: 1px solid var(--fb-border); background: var(--background-primary);
-  color: var(--fb-text-faint); cursor: pointer; transition: .15s;
+  color: var(--text-normal); cursor: pointer; transition: .15s;
+  flex-shrink: 0; margin-left: auto;
 }
-.finance-block.fin-beancount .bc-copy:hover { color: var(--fb-accent); border-color: var(--fb-accent); background: var(--fb-accent-soft); }
-.finance-block.fin-beancount .bc-copy svg { width: 13px; height: 13px; }
+.finance-block.fin-beancount .bc-copy:hover { color: var(--fb-accent); border-color: var(--fb-accent); }
+.finance-block.fin-beancount .bc-copy svg { width: 14px; height: 14px; }
 .finance-block.fin-beancount .bc-copy.copied { color: var(--fb-green); border-color: var(--fb-green); background: var(--fb-green-soft); }
 
 /* 收支统计（与下方记录留出呼吸间距） */
@@ -442,8 +470,11 @@
 .finance-block.ficalc .fc-lifecycle-svg { display: block; width: 100%; height: auto; }
 .finance-block.ficalc .fc-net { stroke: var(--fb-blue); stroke-width: 2; fill: none; }
 .finance-block.ficalc .fc-net-area { fill: var(--fb-blue-soft); stroke: none; }
-/* 历史净资产柱（记账确定段） */
+/* 历史净资产柱（记账确定段）；资不抵债的年份从零基线向下长红柱 */
 .finance-block.ficalc .fc-hist-bar { fill: var(--fb-blue); opacity: 0.25; }
+.finance-block.ficalc .fc-hist-bar.is-neg { fill: var(--fb-red); opacity: 0.3; }
+/* 净资产层零基线（仅存在负净资产时出现） */
+.finance-block.ficalc .fc-net-zero-line { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.6; }
 /* 「当前」分界线 */
 .finance-block.ficalc .fc-now-line { stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 6 4; }
 /* 历史段图例 */
@@ -511,18 +542,23 @@
 /* pill 红色态（成功率过低） */
 .finance-block .fb-pill.is-red { color: var(--fb-red); background: var(--fb-red-soft); border-color: transparent; }
 
-/* ─── finance-log 流水（时间线式优雅呈现 + 筛选 + 动态统计） ── */
+/* ─── finance-log 流水面板（v2.5：流水查询 · kind 下拉 · 净变动 · 无分组 · 点击展开） ── */
 
-.finance-block.finance-log .log-status { font-size: 1em; color: var(--text-muted); margin-bottom: 0.4em; }
-.finance-block.finance-log .log-status.log-error { color: var(--fb-red); }
-.finance-block.finance-log .log-empty {
-  padding: 1.5em; text-align: center; color: var(--fb-text-faint); font-style: italic;
+/* 筛选工具栏（kind 下拉 + 账户下拉 + 搜索框） */
+.finance-block.finance-log .log-filterbar { display: flex; align-items: center; gap: 0.6em; margin-bottom: 0.8em; flex-wrap: wrap; }
+.finance-block.finance-log .log-select,
+.finance-block.finance-log .log-search {
+  font: inherit; font-size: 0.9em; padding: 0.38em 0.65em;
+  border: 1px solid var(--fb-border); border-radius: var(--fb-radius-sm);
+  background: var(--background-primary); color: var(--text-normal);
 }
+.finance-block.finance-log .log-search { flex: 1; min-width: 10em; }
+.finance-block.finance-log .log-select:focus,
+.finance-block.finance-log .log-search:focus { outline: none; border-color: var(--fb-accent); box-shadow: 0 0 0 3px var(--fb-accent-soft); }
+.finance-block.finance-log .flabel { font-size: 0.85em; color: var(--text-muted); }
 
 /* 生效中的筛选条件回显（金额 / 账户 / 类型 / 归属） */
-.finance-block.finance-log .log-criteria {
-  display: flex; flex-wrap: wrap; gap: 0.4em; margin: 0 0 0.6em;
-}
+.finance-block.finance-log .log-criteria { display: flex; flex-wrap: wrap; gap: 0.4em; margin: 0 0 0.6em; }
 .finance-block.finance-log .log-chip {
   display: inline-flex; align-items: center; gap: 0.35em;
   font-size: 0.92em; line-height: 1.6;
@@ -533,49 +569,52 @@
 .finance-block.finance-log .log-chip-k { opacity: 0.75; }
 .finance-block.finance-log .log-chip-v { font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* 顶部筛选 + 动态统计 */
-.finance-block.finance-log .log-toolbar { display: flex; align-items: center; gap: 0.6em; margin: 0.15em 0 0.8em; flex-wrap: wrap; }
-.finance-block.finance-log .log-filter { display: inline-flex; background: var(--background-secondary); border: 1px solid var(--fb-border); border-radius: 6px; padding: 0.2em; gap: 0.15em; }
-.finance-block.finance-log .lf-btn {
-  font: inherit; font-size: 1em; font-weight: 500; cursor: pointer;
-  padding: 0.25em 0.8em; border-radius: 5px; border: none;
-  background: transparent; color: var(--text-muted); transition: .15s;
-}
-.finance-block.finance-log .lf-btn:hover { color: var(--text-normal); }
-.finance-block.finance-log .lf-btn.is-active { background: var(--background-primary); color: var(--fb-accent); font-weight: 600; box-shadow: var(--fb-shadow); }
-.finance-block.finance-log .log-count { font-size: 1em; color: var(--fb-text-faint); }
-/* 流水内复用 .bc-summary 作为动态统计，收紧上间距 */
+/* 流水内复用 .bc-summary 作为动态统计 */
 .finance-block.finance-log .bc-summary { margin: 0 0 1em; }
 
-.finance-block.finance-log .log-day {
-  font-size: 1em; font-weight: 700; color: var(--text-muted);
-  letter-spacing: .03em; margin: 1em 0 0.25em;
-  display: flex; align-items: center; gap: 0.5em;
-}
-.finance-block.finance-log .log-day::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--fb-accent); flex-shrink: 0; }
-.finance-block.finance-log .log-day:first-of-type { margin-top: 0.15em; }
+/* 交易类型 kind pill（颜色按资金流向区分） */
+.finance-block .kind-pill { font-size: 0.72em; font-weight: 700; padding: 0.1em 0.5em; border-radius: var(--fb-radius-pill); white-space: nowrap; }
+.finance-block .kind-pill.k-flat { color: var(--fb-accent); background: var(--fb-accent-soft); }
+.finance-block .kind-pill.k-in { color: var(--fb-green); background: var(--fb-green-soft); }
+.finance-block .kind-pill.k-out { color: var(--fb-red); background: var(--fb-red-soft); }
 
-.finance-block.finance-log .log-list { display: flex; flex-direction: column; }
-.finance-block.finance-log .log-row {
-  display: flex; align-items: center; gap: 0.75em;
-  padding: 0.7em 0.75em; border-radius: var(--fb-radius-sm);
-  border: 1px solid transparent; transition: .15s;
+/* 流水列表（每笔一行，无日分组） */
+.finance-block.finance-log .reg-list { display: flex; flex-direction: column; gap: 0.5em; }
+.finance-block.finance-log .reg-row {
+  border: 1px solid var(--fb-border); border-radius: var(--fb-radius-sm);
+  background: var(--background-secondary); padding: 0.7em 0.85em;
+  transition: border-color .15s, box-shadow .15s; cursor: pointer;
 }
-.finance-block.finance-log .log-row:not(:last-child) { border-bottom: 1px solid var(--fb-border); }
-.finance-block.finance-log .log-row:hover { background: var(--fb-row-hover); }
-.finance-block.finance-log .log-row.is-draft { background: var(--fb-amber-soft); border-left: 3px solid var(--fb-amber); }
+.finance-block.finance-log .reg-row:hover { border-color: var(--fb-accent); box-shadow: 0 0 0 3px var(--fb-accent-soft); }
+.finance-block.finance-log .reg-row.is-draft { border-left: 3px solid var(--fb-amber); }
+.finance-block.finance-log .reg-main { display: flex; align-items: center; gap: 0.7em; }
+.finance-block.finance-log .reg-date { font-family: var(--fb-font-mono); font-size: 0.88em; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.finance-block.finance-log .reg-narr { flex: 1; min-width: 0; font-size: 1.05em; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finance-block.finance-log .reg-dir { font-size: 0.72em; font-weight: 700; padding: 0.1em 0.5em; border-radius: var(--fb-radius-pill); white-space: nowrap; flex-shrink: 0; }
+.finance-block.finance-log .reg-dir.in { color: var(--fb-green); background: var(--fb-green-soft); }
+.finance-block.finance-log .reg-dir.out { color: var(--fb-red); background: var(--fb-red-soft); }
+.finance-block.finance-log .reg-dir.flat { color: var(--text-muted); background: var(--background-primary); border: 1px solid var(--fb-border); }
+.finance-block.finance-log .reg-amt { font-family: var(--fb-font-mono); font-size: 1.1em; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
+.finance-block.finance-log .reg-amt.in { color: var(--fb-green); }
+.finance-block.finance-log .reg-amt.out { color: var(--fb-red); }
+.finance-block.finance-log .reg-amt.flat { color: var(--text-normal); }
+.finance-block.finance-log .reg-sub { font-size: 0.78em; font-weight: 700; color: var(--fb-green); margin-left: 0.5em; white-space: nowrap; }
 
-.finance-block.finance-log .log-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fb-accent); flex-shrink: 0; opacity: .7; }
-.finance-block.finance-log .log-row.is-draft .log-dot { background: var(--fb-amber); opacity: 1; }
-.finance-block.finance-log .log-main { flex: 1; min-width: 0; }
-.finance-block.finance-log .log-narr { font-size: 1.1em; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.finance-block.finance-log .log-sub { font-family: var(--fb-font-mono); font-size: 1em; color: var(--fb-text-faint); margin-top: 0.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.finance-block.finance-log .log-right { text-align: right; flex-shrink: 0; }
-.finance-block.finance-log .log-amt { font-family: var(--fb-font-mono); font-size: 1.15em; font-weight: 700; font-variant-numeric: tabular-nums; }
-.finance-block.finance-log .log-amt.out { color: var(--fb-red); }
-.finance-block.finance-log .log-amt.in { color: var(--fb-green); }
-.finance-block.finance-log .log-cat { font-size: 1em; color: var(--text-muted); margin-top: 0.2em; }
-.finance-block.finance-log .log-cat.is-draft { color: var(--fb-amber); font-weight: 600; }
+/* 点击展开的分录明细 */
+.finance-block.finance-log .reg-posts { display: none; margin-top: 0.65em; padding-top: 0.65em; border-top: 1px dashed var(--fb-border); flex-direction: column; gap: 0.25em; }
+.finance-block.finance-log .reg-row.is-open .reg-posts { display: flex; }
+.finance-block.finance-log .reg-post { display: flex; align-items: baseline; gap: 0.55em; font-size: 0.9em; }
+.finance-block.finance-log .reg-pacc { flex: 1; min-width: 0; font-family: var(--fb-font-mono); color: var(--fb-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finance-block.finance-log .reg-lot { font-family: var(--fb-font-mono); font-size: 0.8em; color: var(--fb-teal); font-weight: 700; flex-shrink: 0; }
+.finance-block.finance-log .reg-pdir { font-size: 0.7em; font-weight: 700; padding: 0.08em 0.45em; border-radius: var(--fb-radius-pill); white-space: nowrap; flex-shrink: 0; }
+.finance-block.finance-log .reg-pdir.in { color: var(--fb-green); background: var(--fb-green-soft); }
+.finance-block.finance-log .reg-pdir.out { color: var(--fb-red); background: var(--fb-red-soft); }
+.finance-block.finance-log .reg-pdir.src { color: var(--fb-accent); background: var(--fb-accent-soft); }
+.finance-block.finance-log .reg-pdir.sink { color: var(--fb-amber); background: var(--fb-amber-soft); }
+.finance-block.finance-log .reg-pdir.flat { color: var(--text-muted); background: var(--background-primary); border: 1px solid var(--fb-border); }
+.finance-block.finance-log .reg-pamt { font-family: var(--fb-font-mono); font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+.finance-block.finance-log .log-caption { font-size: 0.85em; color: var(--fb-text-faint); margin: 0.6em 0.15em 0; font-family: var(--fb-font-mono); }
 
 /* ─── finance-budget 预算执行率（原型 .bd-* 语法） ───────────── */
 
@@ -682,6 +721,112 @@
   margin-bottom: 0;
 }
 
+/* 参数字段行内分组（日期 + 交易类型并列等场景） */
+.finance-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.finance-field-row .finance-field {
+  margin-bottom: 0;
+}
+
+/* ── 可编辑下拉框（combobox）：账户选择 ──────────────────────── */
+/* 既有候选列表可选，又支持手打新账户名。替代原生 datalist（白色弹出层不可样式化）
+   和 select（不可编辑）。 */
+
+.finance-combobox {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.finance-combobox-input {
+  flex: 1;
+  padding-right: 32px; /* 给箭头按钮留空间 */
+}
+
+.finance-combobox-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.finance-combobox-toggle:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.finance-combobox-toggle::after {
+  content: '▾';
+}
+
+/* 下拉面板：绝对定位，z-index 浮于弹窗之上 */
+.finance-combobox-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.25));
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  animation: fb-combobox-fade-in 0.12s ease-out;
+}
+
+@keyframes fb-combobox-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.finance-combobox-dropdown.is-open {
+  display: block;
+}
+
+.finance-combobox-option {
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: var(--font-ui-small, 14px);
+  color: var(--text-normal);
+  transition: background 0.1s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finance-combobox-option:hover,
+.finance-combobox-option.is-highlighted {
+  background: var(--background-modifier-hover);
+}
+
+.finance-combobox-empty {
+  padding: 8px 12px;
+  font-size: var(--font-ui-small, 13px);
+  color: var(--text-muted);
+  text-align: center;
+}
+
 /* 引导式金额筛选：运算符下拉 + 数字框（之间时两个框） */
 .amount-range-control {
   display: flex;
@@ -713,6 +858,158 @@
   padding-top: 0.8em;
   border-top: 1px solid var(--background-modifier-border);
 }
+
+/* ── 复式分录多腿录入编辑器（fin-beancount） ──────────────── */
+/* 复用 fin-beancount.html 原型的设计语言（流入/流出/来源/去向 方向标签），
+   但落到插件自己的 token（--background-modifier-* / --interactive-accent）。 */
+
+.fb-legs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fb-leg {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  padding: 10px 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fb-leg:hover {
+  border-color: var(--interactive-accent);
+}
+
+.fb-leg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fb-leg-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--interactive-accent-soft, rgba(124, 92, 255, 0.12));
+  color: var(--interactive-accent, #7c5cff);
+  flex-shrink: 0;
+}
+
+.fb-leg-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.fb-leg-dir {
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.fb-leg-dir.in { color: var(--fb-green, #2fa86a); background: var(--fb-green-soft, rgba(47, 168, 106, 0.12)); }
+.fb-leg-dir.out { color: var(--fb-red, #e5484d); background: var(--fb-red-soft, rgba(229, 72, 77, 0.12)); }
+.fb-leg-dir.src { color: var(--interactive-accent, #7c5cff); background: var(--interactive-accent-soft, rgba(124, 92, 255, 0.12)); }
+.fb-leg-dir.sink { color: var(--fb-amber, #e0922f); background: var(--fb-amber-soft, rgba(224, 146, 47, 0.12)); }
+.fb-leg-dir.flat { color: var(--text-muted); background: var(--background-primary); border-color: var(--background-modifier-border); }
+.fb-leg-dir:hover { filter: brightness(0.97); }
+
+.fb-leg-del {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.fb-leg-del:hover { color: var(--fb-red, #e5484d); }
+
+.fb-leg-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.fb-leg-amount-mirror {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+  padding: 7px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--interactive-accent-soft, rgba(124, 92, 255, 0.1));
+}
+.fb-amt-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--interactive-accent, #7c5cff);
+  font-variant-numeric: tabular-nums;
+}
+.fb-amt-note {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.fb-leg-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.fb-addleg {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px dashed var(--background-modifier-border);
+  background: var(--background-primary-alt, var(--background-secondary));
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: 0.15s;
+}
+.fb-addleg:hover { color: var(--interactive-accent, #7c5cff); border-color: var(--interactive-accent, #7c5cff); }
+
+.fb-leg-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.fb-leg-status-ok { color: var(--fb-green, #2fa86a); }
+.fb-leg-status-warn { color: var(--fb-amber, #e0922f); }
+
+.fb-balance-btn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--fb-amber, #e0922f);
+  background: var(--fb-amber-soft, rgba(224, 146, 47, 0.12));
+  color: var(--fb-amber, #e0922f);
+  cursor: pointer;
+  transition: 0.15s;
+}
+.fb-balance-btn:hover { background: var(--fb-amber, #e0922f); color: #fff; }
 
 /* ── 代码块插入弹窗（与 workout-block 统一风格） ────────────── */
 
@@ -1065,93 +1362,475 @@
 .fb-check-row label { font-weight: 400; color: var(--text-muted); cursor: pointer; }
 .fb-check-row input[type='checkbox'] { margin: 0; flex-shrink: 0; }
 
-/* ─── finance-assets 资产总览 ──────────────────────────── */
-.as-assets .fb-head { margin-bottom: 0.6em; }
+/* ─── finance-assets 资产总览（原型 v5 设计系统） ── */
 
-.as-banner {
-  padding: 1em 1.2em;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.08), rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.02));
-  border: 1px solid rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.15);
-  margin-bottom: 0.8em;
+/* 头部青色变体 */
+.finance-block.finance-assets .fb-icon.is-teal {
+  background: var(--fb-teal-soft); color: var(--fb-teal);
 }
-.as-banner .b-label { font-size: 1.5em; font-weight: 700; display: block; }
-.as-banner .b-desc { font-size: var(--font-ui-small, 13px); color: var(--text-muted); }
-
-.as-bar-wrap { margin-bottom: 1em; }
-.as-bar {
-  display: flex; height: 10px; border-radius: 5px; overflow: hidden;
-  background: var(--background-secondary); margin-bottom: 0.4em;
-}
-.as-bar-seg { height: 100%; transition: width 0.3s ease; min-width: 2px; }
-.as-bar-legend { display: flex; flex-wrap: wrap; gap: 0.6em; font-size: var(--font-ui-smaller, 12px); color: var(--text-muted); }
-.as-bar-legend span { display: flex; align-items: center; gap: 0.3em; }
-.as-bar-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-
-.as-section { margin-bottom: 1em; }
-.as-section-title {
-  font-size: var(--font-ui-small, 13px); font-weight: 600;
-  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
-  margin-bottom: 0.5em; padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--background-modifier-border);
+.finance-block.finance-assets .fb-pill.is-teal {
+  color: var(--fb-teal); background: var(--fb-teal-soft); border-color: transparent;
 }
 
-.as-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px; }
-
-.as-card {
-  padding: 0.5em 0.8em; border-radius: 6px;
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
-  transition: border-color 0.15s;
+/* 净资产（市值口径）大数字 */
+.finance-block.finance-assets .networth-h {
+  display: flex; align-items: baseline; gap: 0.5em; margin-bottom: 0.6em;
 }
-.as-card:hover { border-color: rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.3); }
+.finance-block.finance-assets .nw-label {
+  font-size: 1.05em; font-weight: 600; color: var(--text-normal);
+}
+.finance-block.finance-assets .nw-value {
+  font-size: 1.75em; font-weight: 700; font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em; color: var(--text-normal);
+}
 
-/* 顶部行：[icon] [name] [badges]          [¥value] */
-.as-card-top { display: flex; justify-content: space-between; align-items: center; gap: 0.4em; }
-.as-card-tl { display: flex; align-items: center; gap: 0.3em; min-width: 0; flex-wrap: wrap; }
+/* 指标网格（复用 .fb-grid / .fb-metric，仅补涨跌色） */
+.finance-block.finance-assets .fb-grid { margin-bottom: 0.8em; }
+.finance-block.finance-assets .fb-metric .m-value.is-pos { color: var(--fb-green); }
+.finance-block.finance-assets .fb-metric .m-value.is-neg { color: var(--fb-red); }
 
-/* 底部行：[🔄]          [账面 ¥xx] [+¥xxx] */
-.as-card-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 0.3em; }
-.as-card-br { display: flex; align-items: baseline; gap: 0.3em; }
+/* 资产配置条 */
+.finance-block.finance-assets .alloc-title {
+  font-size: var(--font-ui-small, 13px); font-weight: 600; color: var(--text-muted);
+  margin: 0.2em 0 0.4em;
+}
+.finance-block.finance-assets .alloc-bar {
+  display: flex; height: 12px; border-radius: 999px; overflow: hidden;
+  background: var(--fb-track); margin-bottom: 0.5em;
+}
+.finance-block.finance-assets .alloc-seg { height: 100%; }
+.finance-block.finance-assets .alloc-legend {
+  display: flex; flex-wrap: wrap; gap: 0.6em;
+  font-size: var(--font-ui-smaller, 11.5px); color: var(--text-muted); margin-bottom: 1em;
+}
+.finance-block.finance-assets .alloc-legend-item { display: inline-flex; align-items: center; gap: 0.3em; }
+.finance-block.finance-assets .alloc-dot {
+  width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex-shrink: 0;
+}
+.finance-block.finance-assets .alloc-pct { font-variant-numeric: tabular-nums; }
 
-.as-icon { font-size: 1.1em; flex-shrink: 0; }
-.as-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 7em; }
+/* 分区与卡片网格 */
+.finance-block.finance-assets .as-section { margin-bottom: 1em; }
+.finance-block.finance-assets .as-liabilities { margin-top: 0.4em; }
+.finance-block.finance-assets .section-title {
+  font-size: var(--font-ui-small, 13px); font-weight: 700; color: var(--text-normal);
+  margin: 0.6em 0 0.5em; display: flex; align-items: center; gap: 0.4em;
+}
+.finance-block.finance-assets .section-title .hint {
+  font-size: var(--font-ui-smaller, 11px); font-weight: 400; color: var(--text-faint);
+}
+.finance-block.finance-assets .as-group-label {
+  font-size: var(--font-ui-smaller, 11px); font-weight: 600; color: var(--text-muted);
+  margin: 0.3em 0 0.3em;
+}
+.finance-block.finance-assets .asset-grid {
+  display: flex; flex-direction: column; gap: 0.5em;
+}
+@media (max-width: 620px) {
+  .finance-block.finance-assets .fb-grid { grid-template-columns: repeat(2, 1fr); }
+}
 
-.as-card .fb-badge { font-size: var(--font-ui-smaller, 10px); padding: 0.05em 0.4em; flex-shrink: 0; white-space: nowrap; }
-.as-card .fb-badge.is-stale { background: rgba(240, 180, 0, 0.15); color: #b07800; }
-.as-card .fb-badge.is-accent { background: rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.1); color: var(--text-accent); }
+/* 资产卡片 */
+.finance-block.finance-assets .asset-card {
+  border: 1px solid var(--fb-border); border-radius: var(--fb-radius-sm);
+  padding: 0.55em 0.7em; background: var(--background-primary);
+  transition: border-color .15s, box-shadow .15s;
+}
+.finance-block.finance-assets .asset-card:hover {
+  border-color: var(--fb-teal); box-shadow: 0 0 0 3px var(--fb-teal-soft);
+}
+.finance-block.finance-assets .asset-card.is-invest { grid-column: 1 / -1; border-color: rgba(20, 163, 163, 0.3); }
+.finance-block.finance-assets .asset-card.is-invest:hover {
+  border-color: var(--fb-teal); box-shadow: 0 0 0 3px var(--fb-teal-soft);
+}
+.finance-block.finance-assets .asset-row { display: flex; align-items: center; gap: 0.4em; }
+.finance-block.finance-assets .asset-ico {
+  width: 26px; height: 26px; border-radius: var(--fb-radius-sm); flex-shrink: 0;
+  display: grid; place-items: center; font-size: 1em;
+  background: var(--background-secondary); border: 1px solid var(--fb-border);
+}
+.finance-block.finance-assets .asset-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.2em; }
+.finance-block.finance-assets .asset-name {
+  font-size: 1em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.finance-block.finance-assets .asset-tags { display: flex; flex-wrap: wrap; gap: 0.25em; }
+.finance-block.finance-assets .asset-tag {
+  font-size: var(--font-ui-smaller, 11px); font-weight: 500; padding: 0.1em 0.45em;
+  border-radius: var(--fb-radius-pill); border: 1px solid var(--fb-border);
+  background: var(--background-primary); color: var(--text-muted); white-space: nowrap;
+}
+.finance-block.finance-assets .asset-tag.owner { background: var(--fb-accent-soft); color: var(--fb-accent); border-color: transparent; }
+.finance-block.finance-assets .asset-tag.method { background: var(--fb-teal-soft); color: var(--fb-teal); border-color: transparent; }
+.finance-block.finance-assets .asset-tag.stale { background: var(--fb-amber-soft); color: var(--fb-amber); border-color: transparent; }
+.finance-block.finance-assets .asset-amt {
+  font-family: var(--fb-font-mono); font-size: 1.05em; font-weight: 700;
+  font-variant-numeric: tabular-nums; text-align: right; flex-shrink: 0;
+}
+.finance-block.finance-assets .asset-amt.is-neg { color: var(--fb-red); }
 
-.as-value { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 1.05em; flex-shrink: 0; }
-.as-value.is-neg { color: var(--text-error); }
+/* 卡片底部：账面 / 未实现 / 已实现 + 估值按钮 */
+.finance-block.finance-assets .asset-book {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.4em;
+  margin-top: 0.4em; padding-top: 0.4em; border-top: 1px dashed var(--fb-border);
+  font-size: var(--font-ui-smaller, 11.5px); color: var(--text-muted);
+}
+.finance-block.finance-assets .asset-book .ab-left { display: flex; align-items: center; gap: 0.4em; min-width: 0; }
+.finance-block.finance-assets .ab-book { white-space: nowrap; }
+.finance-block.finance-assets .asset-book .ab-right { display: flex; align-items: baseline; gap: 0.4em; flex-shrink: 0; }
+.finance-block.finance-assets .delta { font-family: var(--fb-font-mono); font-weight: 700; font-variant-numeric: tabular-nums; }
+.finance-block.finance-assets .delta.is-pos { color: var(--fb-green); }
+.finance-block.finance-assets .delta.is-neg { color: var(--fb-red); }
+.finance-block.finance-assets .realized-badge {
+  font-size: var(--font-ui-smaller, 10px); font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: 0.1em 0.45em; border-radius: var(--fb-radius-pill); white-space: nowrap;
+  color: var(--fb-green); background: var(--fb-green-soft);
+}
+.finance-block.finance-assets .realized-badge.is-neg { color: var(--fb-red); background: var(--fb-red-soft); }
 
-.as-book-label { font-size: var(--font-ui-smaller, 11px); color: var(--text-muted); white-space: nowrap; }
-.as-pnl { font-size: var(--font-ui-smaller, 11px); font-weight: 600; font-variant-numeric: tabular-nums; padding: 0.1em 0.4em; border-radius: 3px; }
-.as-pnl.is-pos { color: #d03030; background: rgba(208, 48, 48, 0.1); }
-.as-pnl.is-neg { color: #208040; background: rgba(32, 128, 64, 0.1); }
-
-.as-icon-btn {
+/* 估值按钮（圆形图标，资产主题青色） */
+.finance-block.finance-assets .as-icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; padding: 0;
-  border: none; border-radius: 50%;
-  background: rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.08);
-  color: var(--text-faint);
-  cursor: pointer; transition: 0.15s;
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
+  background: var(--fb-teal-soft); color: var(--fb-teal); cursor: pointer; transition: 0.15s;
 }
-.as-icon-btn:hover { background: rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.2); color: var(--text-accent); }
-.as-icon-btn svg { display: block; }
+.finance-block.finance-assets .as-icon-btn:hover { background: var(--fb-teal); color: #fff; }
+.finance-block.finance-assets .as-icon-btn svg { display: block; }
 
-.as-footnote { font-size: var(--font-ui-smaller, 11px); color: var(--text-faint); margin-top: 0.8em; font-style: italic; }
+/* 持仓明细 */
+.finance-block.finance-assets .lot-head {
+  display: flex; align-items: center; gap: 0.3em; margin-top: 0.5em; padding-top: 0.4em;
+  border-top: 1px dashed var(--fb-border);
+  font-size: var(--font-ui-smaller, 11px); font-weight: 700; color: var(--fb-teal);
+}
+.finance-block.finance-assets .lot-list { display: flex; flex-direction: column; gap: 0.25em; margin-top: 0.35em; }
+.finance-block.finance-assets .lot-row {
+  display: flex; align-items: center; gap: 0.5em; padding: 0.35em 0.5em;
+  border-radius: var(--fb-radius-sm); background: var(--background-secondary);
+  border: 1px solid var(--fb-border);
+}
+.finance-block.finance-assets .lot-main { flex: 1; min-width: 0; }
+.finance-block.finance-assets .lr-name {
+  font-size: var(--font-ui-small, 12.5px); font-weight: 600; display: flex; align-items: center; gap: 0.3em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.finance-block.finance-assets .lr-name .tick {
+  font-family: var(--fb-font-mono); font-size: 10px; color: var(--text-faint); font-weight: 400;
+}
+.finance-block.finance-assets .lr-sub {
+  font-family: var(--fb-font-mono); font-size: var(--font-ui-smaller, 10.5px);
+  color: var(--text-faint); margin-top: 0.1em;
+}
+.finance-block.finance-assets .lr-metrics { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex-shrink: 0; }
+.finance-block.finance-assets .lr-mkt { font-family: var(--fb-font-mono); font-size: var(--font-ui-small, 12.5px); font-weight: 700; font-variant-numeric: tabular-nums; }
+.finance-block.finance-assets .lr-gain { font-family: var(--fb-font-mono); font-size: var(--font-ui-smaller, 10.5px); font-weight: 700; font-variant-numeric: tabular-nums; }
+.finance-block.finance-assets .lr-gain.is-pos { color: var(--fb-green); }
+.finance-block.finance-assets .lr-gain.is-neg { color: var(--fb-red); }
+.finance-block.finance-assets .lr-realized {
+  font-size: var(--font-ui-smaller, 10px); font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: 0.1em 0.45em; border-radius: var(--fb-radius-pill);
+  color: var(--fb-green); background: var(--fb-green-soft); flex-shrink: 0; white-space: nowrap;
+}
+.finance-block.finance-assets .lr-realized.is-neg { color: var(--fb-red); background: var(--fb-red-soft); }
 
-.as-empty { text-align: center; padding: 2em; color: var(--text-muted); }
+/* 负债列表 */
+.finance-block.finance-assets .liability-list { display: flex; flex-direction: column; gap: 0.4em; }
+.finance-block.finance-assets .liability-card {
+  display: flex; align-items: center; gap: 0.5em; border: 1px solid var(--fb-border);
+  border-radius: var(--fb-radius-sm); padding: 0.5em 0.7em; background: var(--background-primary);
+}
+.finance-block.finance-assets .liability-card .asset-amt { margin-left: auto; }
 
-/* 估值行在 fin-beancount 中的渲染 */
-.bc-valuation {
+/* 脚注 */
+.finance-block.finance-assets .fb-footnote {
+  margin-top: 0.8em; padding-top: 0.6em; border-top: 1px solid var(--fb-border);
+  font-size: var(--font-ui-smaller, 11px); color: var(--text-faint); font-style: italic;
+}
+
+/* 对账提示（#7）：结构恒等式不成立时的软告警 */
+.finance-block.finance-assets .as-recon {
+  display: flex; align-items: flex-start; gap: 0.5em;
+  margin: 0 0 0.8em; padding: 0.5em 0.7em;
+  border-radius: var(--fb-radius-sm);
+  border: 1px solid var(--fb-amber-soft);
+  background: var(--fb-amber-soft);
+}
+.finance-block.finance-assets .as-recon-icon { color: var(--fb-amber); flex-shrink: 0; display: flex; margin-top: 1px; }
+.finance-block.finance-assets .as-recon-body { min-width: 0; }
+.finance-block.finance-assets .as-recon-title {
+  font-size: var(--font-ui-small, 12px); font-weight: 600; color: var(--fb-amber);
+  font-variant-numeric: tabular-nums;
+}
+.finance-block.finance-assets .as-recon-desc { font-size: var(--font-ui-smaller, 11px); color: var(--text-muted); margin-top: 0.15em; }
+
+.finance-block.finance-assets .as-empty { text-align: center; padding: 2em; color: var(--text-muted); }
+
+/* ─── 估值卡片（fin-beancount 内 fb-valuation 渲染，青色体系） ── */
+
+/* 头部 teal 变体 */
+.finance-block.fin-beancount .fb-icon.is-val { background: var(--fb-teal-soft); color: var(--fb-teal); }
+.finance-block.fin-beancount .fb-pill.is-teal { color: var(--fb-teal); background: var(--fb-teal-soft); border-color: transparent; }
+.finance-block.fin-beancount .fb-btn.is-val { background: var(--fb-teal); color: #fff; border-color: var(--fb-teal); }
+.finance-block.fin-beancount .fb-btn.is-val:hover { background: var(--fb-teal-strong); }
+.finance-block.fin-beancount .fb-btn.is-ghost-val:hover { border-color: var(--fb-teal); color: var(--fb-teal); }
+
+/* 顶部提示条（过期 / 未知账户 / 错误） */
+.finance-block.fin-beancount .bc-banner {
   display: flex; align-items: center; gap: 0.6em;
-  padding: 0.4em 0.8em; margin: 0.3em 0;
-  border-radius: 6px; font-size: var(--font-ui-small, 13px);
-  background: rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.04);
-  border-left: 3px solid rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.3);
+  padding: 0.6em 0.8em; border-radius: var(--fb-radius-sm);
+  font-size: 1em; margin-bottom: 0.8em;
 }
-.bc-valuation .bc-date-chip { font-size: var(--font-ui-smaller, 12px); color: var(--text-muted); }
-.bc-valuation .bc-val-account { font-weight: 500; }
-.bc-valuation .bc-val-amount { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-accent); }
+.finance-block.fin-beancount .bc-banner.warn { color: #8a5a00; background: var(--fb-amber-soft); border: 1px solid rgba(245, 166, 35, 0.3); }
+.finance-block.fin-beancount .bc-banner.err { color: #a3271c; background: var(--fb-red-soft); border: 1px solid rgba(234, 67, 53, 0.3); }
+.finance-block.fin-beancount .bc-banner.info { color: var(--fb-teal-strong); background: var(--fb-teal-soft); border: 1px solid rgba(20, 163, 163, 0.25); }
+.finance-block.fin-beancount .bc-banner .spacer { flex: 1; }
+.finance-block.fin-beancount .bc-banner .fb-btn { font-size: 0.92em; padding: 0.28em 0.75em; }
+
+/* 分区标题（混合块：交易 / 估值快照） */
+.finance-block.fin-beancount .bc-section-label {
+  display: flex; align-items: center; gap: 0.5em;
+  font-size: 0.85em; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--fb-text-faint); text-transform: uppercase;
+  margin: 0.9em 0 0.5em;
+}
+.finance-block.fin-beancount .bc-section-label::after { content: ''; flex: 1; height: 1px; background: var(--fb-border); }
+.finance-block.fin-beancount .bc-section-label .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fb-accent); }
+.finance-block.fin-beancount .bc-section-label.is-val .dot { background: var(--fb-teal); }
+
+/* 估值卡片本体 */
+.finance-block.fin-beancount .bc-val {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--fb-border); border-radius: var(--fb-radius-sm);
+  background: var(--background-secondary); padding: 0.7em 0.85em 0.7em 1em;
+  transition: border-color .15s, box-shadow .15s;
+}
+.finance-block.fin-beancount .bc-val::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--fb-teal); opacity: 0.75;
+}
+.finance-block.fin-beancount .bc-val:hover { border-color: var(--fb-teal); box-shadow: 0 0 0 3px var(--fb-teal-soft); }
+.finance-block.fin-beancount .bc-val.is-stale::before { background: var(--fb-amber); }
+
+.finance-block.fin-beancount .bc-val-head { display: flex; align-items: center; gap: 0.55em; margin-bottom: 0.5em; }
+.finance-block.fin-beancount .bc-val-acc { display: flex; align-items: center; gap: 0.35em; font-size: 1.1em; font-weight: 600; min-width: 0; }
+.finance-block.fin-beancount .bc-val-acc .ico { font-size: 1.05em; }
+.finance-block.fin-beancount .bc-val-acc .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.finance-block.fin-beancount .bc-val-kind {
+  font-size: 0.8em; font-weight: 700; letter-spacing: 0.04em; flex-shrink: 0;
+  padding: 0.12em 0.5em; border-radius: var(--fb-radius-pill);
+  color: var(--fb-teal); background: var(--fb-teal-soft);
+}
+.finance-block.fin-beancount .bc-val-kind.dep { color: var(--fb-accent); background: var(--fb-accent-soft); }
+.finance-block.fin-beancount .bc-val-kind.book { color: var(--text-muted); background: var(--background-primary); border: 1px solid var(--fb-border); }
+
+.finance-block.fin-beancount .bc-val-body { display: flex; align-items: flex-end; gap: 0.9em; flex-wrap: wrap; }
+.finance-block.fin-beancount .bc-val-amt {
+  font-family: var(--fb-font-mono); font-variant-numeric: tabular-nums;
+  font-size: 1.3em; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; color: var(--text-normal);
+}
+.finance-block.fin-beancount .bc-val-amt .cur { font-size: 0.58em; font-weight: 600; color: var(--fb-text-faint); margin-left: 0.35em; }
+.finance-block.fin-beancount .bc-val-delta {
+  font-family: var(--fb-font-mono); font-variant-numeric: tabular-nums;
+  font-size: 0.85em; font-weight: 700; padding: 0.16em 0.6em; border-radius: var(--fb-radius-pill);
+  display: inline-flex; align-items: center; gap: 0.3em; margin-bottom: 0.18em;
+}
+.finance-block.fin-beancount .bc-val-delta.up { color: var(--fb-green); background: var(--fb-green-soft); }
+.finance-block.fin-beancount .bc-val-delta.down { color: var(--fb-red); background: var(--fb-red-soft); }
+.finance-block.fin-beancount .bc-val-delta.flat { color: var(--fb-text-faint); background: var(--background-primary); }
+.finance-block.fin-beancount .bc-val-vs { font-size: 0.85em; color: var(--fb-text-faint); margin-bottom: 0.3em; font-family: var(--fb-font-mono); }
+.finance-block.fin-beancount .bc-val-spark { margin-left: auto; margin-bottom: 0.2em; flex-shrink: 0; }
+.finance-block.fin-beancount .spark-line { fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.finance-block.fin-beancount .spark-line.up { stroke: var(--fb-green); }
+.finance-block.fin-beancount .spark-line.down { stroke: var(--fb-red); }
+
+.finance-block.fin-beancount .bc-val-book { display: flex; align-items: center; gap: 0.5em; margin-top: 0.55em; font-size: 0.85em; color: var(--text-muted); font-family: var(--fb-font-mono); }
+.finance-block.fin-beancount .bc-val-book .bar { flex: 1; height: 5px; border-radius: 3px; background: var(--background-primary); border: 1px solid var(--fb-border); position: relative; overflow: hidden; min-width: 80px; }
+.finance-block.fin-beancount .bc-val-book .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--fb-teal); opacity: 0.55; }
+.finance-block.fin-beancount .bc-val-book .bar u { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text-muted); text-decoration: none; }
+
+.finance-block.fin-beancount .bc-val-meta { display: flex; flex-wrap: wrap; gap: 0.4em; margin-top: 0.55em; padding-top: 0.5em; border-top: 1px dashed var(--fb-border); align-items: center; }
+.finance-block.fin-beancount .bc-val-meta .bc-meta-tag.warn { color: var(--fb-amber); background: var(--fb-amber-soft); border-color: transparent; font-weight: 700; }
+.finance-block.fin-beancount .bc-val-meta .bc-meta-tag.err { color: var(--fb-red); background: var(--fb-red-soft); border-color: transparent; font-weight: 700; }
+.finance-block.fin-beancount .bc-val-note { font-size: 0.85em; color: var(--text-muted); font-style: italic; }
+
+/* 估值逐笔入账按钮（青色，与交易的紫色对称） */
+.finance-block.fin-beancount .bc-post-one.is-val { background: var(--fb-teal); border-color: var(--fb-teal); color: #fff; }
+.finance-block.fin-beancount .bc-post-one.is-val:hover { background: var(--fb-teal-strong); border-color: var(--fb-teal-strong); }
+
+/* 估值校验脚注（青色） */
+.finance-block.fin-beancount .bc-check.is-val { color: var(--fb-teal); background: var(--fb-teal-soft); }
+/* 软告警汇总（报告 #1）：提示级，不是错误，故用琥珀而非红 */
+.finance-block.fin-beancount .bc-check.is-warn { color: var(--fb-amber); background: var(--fb-amber-soft); }
+
+/* 估值时间线（按账户聚合展开态） */
+.finance-block.fin-beancount .val-timeline { display: flex; flex-direction: column; gap: 0; padding: 0.3em 0.2em 0.1em; }
+.finance-block.fin-beancount .val-tl-row { display: flex; align-items: center; gap: 0.7em; padding: 0.42em 0.5em; border-radius: 6px; font-family: var(--fb-font-mono); font-size: 0.85em; transition: background .15s; position: relative; }
+.finance-block.fin-beancount .val-tl-row:hover { background: var(--fb-row-hover); }
+.finance-block.fin-beancount .val-tl-row .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fb-teal); flex-shrink: 0; opacity: 0.45; }
+.finance-block.fin-beancount .val-tl-row.is-latest .dot { opacity: 1; box-shadow: 0 0 0 3px var(--fb-teal-soft); }
+.finance-block.fin-beancount .val-tl-row .d { color: var(--text-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.finance-block.fin-beancount .val-tl-row .v { font-weight: 700; font-variant-numeric: tabular-nums; }
+.finance-block.fin-beancount .val-tl-row .g { flex: 1; }
+.finance-block.fin-beancount .val-tl-row .cmt { font-family: var(--font-ui); font-style: italic; color: var(--fb-text-faint); font-size: 0.92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+.finance-block.fin-beancount .val-tl-row .ref { color: var(--fb-text-faint); font-size: 0.88em; }
+
+.finance-block.fin-beancount .bc-group-body .bc-val { background: var(--background-primary); }
+
+/* ─── 更新估值弹窗（实时预览 + 写入方式选择，青色体系） ── */
+.valuation-modal .fb-input:focus { border-color: var(--fb-teal); box-shadow: 0 0 0 3px var(--fb-teal-soft); outline: none; }
+.valuation-modal .fb-subhead { font-size: var(--font-ui-smaller, 13px); color: var(--text-muted); margin: 0.2em 0 0.8em; line-height: 1.5; }
+.valuation-modal h2 { display: flex; align-items: center; gap: 0.45em; }
+.valuation-modal .fb-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex-shrink: 0;
+  background: var(--fb-teal-soft); color: var(--fb-teal);
+  border-radius: var(--fb-radius-sm);
+}
+.valuation-modal .fb-icon svg { width: 18px; height: 18px; display: block; }
+.valuation-modal .vm-account-lock {
+  display: flex; align-items: center; gap: 0.6em;
+  padding: 0.5em 0.7em; border: 1px solid var(--fb-teal); border-radius: var(--fb-radius-sm);
+  background: var(--fb-teal-soft);
+  font-family: var(--fb-font-mono); font-variant-numeric: tabular-nums;
+}
+.valuation-modal .vm-lock-name { font-weight: 700; color: var(--fb-teal); }
+.valuation-modal .vm-lock-badge { font-size: var(--font-ui-smaller, 11px); color: var(--text-muted); }
+.valuation-modal .fb-field { margin-bottom: 0.8em; }
+.valuation-modal .fb-field label { font-weight: 600; margin-bottom: 0.3em; display: block; }
+.valuation-modal .fb-row2 { display: flex; gap: 0.6em; align-items: flex-start; }
+.valuation-modal .fb-row2 > *:first-child { flex: 1; }
+.valuation-modal .fb-row2 .fb-input.narrow { width: 10em; flex: none; }
+.valuation-modal .m-hint { font-size: var(--font-ui-smaller, 12px); color: var(--text-faint); margin-top: 0.3em; line-height: 1.45; }
+.valuation-modal .m-hint.warn { color: var(--fb-amber); }
+.valuation-modal .m-quick { display: flex; gap: 0.35em; margin-top: 0.5em; flex-wrap: wrap; }
+.valuation-modal .m-quick .chip { font: inherit; font-size: 0.85em; padding: 0.2em 0.6em; border-radius: var(--fb-radius-pill); border: 1px solid var(--fb-border); background: var(--background-primary); color: var(--text-muted); cursor: pointer; transition: .15s; font-family: var(--fb-font-mono); font-variant-numeric: tabular-nums; }
+.valuation-modal .m-quick .chip:hover { color: var(--fb-teal); border-color: var(--fb-teal); background: var(--fb-teal-soft); }
+/* 分隔线（表单 → 预览 → 写入方式 三段视觉分界） */
+.valuation-modal .vm-separator { height: 1px; background: var(--fb-border); margin: 0.6em 0 0.8em; }
+/* 实时预览面板（青色左侧强调线，与估值卡片视觉呼应） */
+.valuation-modal .m-preview {
+  background: var(--background-primary-alt, var(--background-secondary));
+  border: 1px solid var(--fb-border); border-left: 3px solid var(--fb-teal);
+  border-radius: var(--fb-radius-sm); padding: 0.8em 1em; margin: 0 0 0.8em;
+}
+.valuation-modal .m-preview .pv-title { font-size: 0.78em; font-weight: 700; letter-spacing: 0.05em; color: var(--fb-teal); text-transform: uppercase; margin-bottom: 0.6em; }
+.valuation-modal .m-preview .pv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5em 0.9em; }
+.valuation-modal .m-preview .pv-cell { display: flex; flex-direction: column; gap: 0.1em; }
+.valuation-modal .m-preview .pv-cell .k { font-size: 0.78em; color: var(--fb-text-faint); }
+.valuation-modal .m-preview .pv-cell .v { font-family: var(--fb-font-mono); font-size: 0.95em; font-weight: 700; font-variant-numeric: tabular-nums; }
+.valuation-modal .m-preview .pv-cell .v.up { color: var(--fb-green); }
+.valuation-modal .m-preview .pv-cell .v.down { color: var(--fb-red); }
+.valuation-modal .m-preview .pv-line { margin-top: 0.65em; padding-top: 0.55em; border-top: 1px dashed var(--fb-border); font-family: var(--fb-font-mono); font-size: 0.8em; color: var(--text-muted); word-break: break-all; line-height: 1.6; }
+.valuation-modal .m-preview .pv-line b { color: var(--fb-teal); font-weight: 700; }
+
+/* ═══ finance-recurring（日常花费 + 贷款，V1 + V2） ═══ */
+.finance-block.finance-recurring .rc-sec-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600; color: var(--text-muted);
+  padding: 12px 0 6px;
+}
+.finance-block.finance-recurring .rc-sec-label { letter-spacing: .03em; }
+.finance-block.finance-recurring .rc-sec-count {
+  background: var(--fb-track); color: var(--text-muted);
+  border-radius: var(--fb-radius-pill); padding: 0 8px; font-size: 11px;
+}
+.finance-block.finance-recurring .rc-link-btn {
+  margin-left: auto; background: none; border: none; cursor: pointer;
+  color: var(--fb-accent); font-size: 12px; font-weight: 600; padding: 2px 4px;
+}
+.finance-block.finance-recurring .rc-link-btn:hover { color: var(--fb-accent-strong); }
+.finance-block.finance-recurring .rc-draft {
+  border: 1px solid var(--fb-border); border-radius: var(--fb-radius-sm);
+  padding: 10px 12px; margin: 8px 0;
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center;
+}
+.finance-block.finance-recurring .rc-draft-name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.finance-block.finance-recurring .rc-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: .02em;
+  background: var(--fb-blue-soft); color: var(--fb-blue);
+  border-radius: var(--fb-radius-pill); padding: 1px 7px;
+}
+.finance-block.finance-recurring .rc-draft-sub { font-weight: 400; font-size: 12px; color: var(--text-muted); }
+.finance-block.finance-recurring .rc-draft-date { font-size: 12px; color: var(--text-muted); }
+.finance-block.finance-recurring .rc-draft-amt { font-weight: 700; font-size: 16px; text-align: right; }
+.finance-block.finance-recurring .rc-draft-preview {
+  grid-column: 1 / -1; font-size: 12px; color: var(--text-muted);
+  background: var(--background-secondary); border-radius: 6px; padding: 5px 8px;
+  font-family: var(--fb-font-mono);
+}
+.finance-block.finance-recurring .rc-draft-split {
+  grid-column: 1 / -1; font-size: 12px; color: var(--fb-blue); padding: 0 8px;
+}
+.finance-block.finance-recurring .rc-draft-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 4px; }
+.finance-block.finance-recurring .rc-btn {
+  border: 1px solid var(--fb-border); background: var(--background-primary);
+  color: var(--text-normal); cursor: pointer;
+  border-radius: 7px; padding: 5px 12px; font-size: 13px; font-weight: 600;
+}
+.finance-block.finance-recurring .rc-btn:hover { border-color: var(--fb-accent); color: var(--fb-accent); }
+.finance-block.finance-recurring .rc-btn.primary { background: var(--fb-accent); border-color: var(--fb-accent); color: var(--text-on-accent, #fff); }
+.finance-block.finance-recurring .rc-btn.primary:hover { filter: brightness(.95); color: var(--text-on-accent, #fff); }
+.finance-block.finance-recurring .rc-btn.ghost { color: var(--text-muted); }
+.finance-block.finance-recurring .rc-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--fb-border); padding: 10px 0 0; }
+.finance-block.finance-recurring .rc-tab {
+  background: none; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--text-muted);
+  padding: 8px 14px 10px; border-bottom: 2px solid transparent;
+  display: flex; align-items: center; gap: 5px;
+}
+.finance-block.finance-recurring .rc-tab:hover { color: var(--text-normal); }
+.finance-block.finance-recurring .rc-tab.is-active { color: var(--fb-accent); border-bottom-color: var(--fb-accent); }
+.finance-block.finance-recurring .rc-tab-count {
+  background: var(--fb-track); color: var(--text-muted);
+  border-radius: var(--fb-radius-pill); padding: 0 7px; font-size: 11px;
+}
+.finance-block.finance-recurring .rc-tab.is-active .rc-tab-count { background: var(--fb-accent-soft); color: var(--fb-accent); }
+.finance-block.finance-recurring .rc-tab-panel { display: none; padding-top: 6px; }
+.finance-block.finance-recurring .rc-tab-panel.is-active { display: block; }
+.finance-block.finance-recurring .rc-plan {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 4px; border-bottom: 1px dashed var(--fb-border);
+}
+.finance-block.finance-recurring .rc-plan:last-child { border-bottom: none; }
+.finance-block.finance-recurring .rc-plan-main { font-weight: 600; }
+.finance-block.finance-recurring .rc-plan-sub { font-size: 12px; color: var(--text-muted); }
+.finance-block.finance-recurring .rc-plan-amt { margin-left: auto; font-weight: 600; font-size: 13px; }
+.finance-block.finance-recurring .rc-plan.is-loan .rc-plan-amt { margin-left: auto; font-size: 12px; color: var(--text-muted); font-weight: 400; }
+.finance-block.finance-recurring .rc-plan-mid { text-align: right; }
+.finance-block.finance-recurring .rc-plan-status {
+  font-size: 11px; padding: 1px 7px; border-radius: var(--fb-radius-pill);
+  background: var(--fb-green-soft); color: var(--fb-green);
+}
+.finance-block.finance-recurring .rc-plan-status.is-paused { background: var(--fb-track); color: var(--text-muted); }
+.finance-block.finance-recurring .rc-plan-btns { display: flex; gap: 4px; }
+.finance-block.finance-recurring .rc-icon-btn {
+  border: 1px solid var(--fb-border); background: var(--background-primary); cursor: pointer;
+  border-radius: 6px; padding: 2px 8px; font-size: 12px; color: var(--text-muted);
+}
+.finance-block.finance-recurring .rc-icon-btn:hover { color: var(--text-normal); border-color: var(--fb-accent); }
+.finance-block.finance-recurring .rc-icon-btn.is-danger:hover { color: var(--fb-red); border-color: var(--fb-red); }
+.finance-block.finance-recurring .rc-prog {
+  width: 100%; height: 4px; border-radius: 2px;
+  background: var(--fb-track); overflow: hidden; margin-top: 4px;
+}
+.finance-block.finance-recurring .rc-prog-fill { height: 100%; background: var(--fb-blue); border-radius: 2px; }
+.finance-block.finance-recurring .rc-new-btn {
+  width: 100%; margin-top: 12px; padding: 10px;
+  border: 1px dashed var(--fb-accent); background: var(--fb-accent-soft);
+  color: var(--fb-accent); border-radius: var(--fb-radius-sm); cursor: pointer;
+  font-weight: 600; font-size: 14px;
+}
+.finance-block.finance-recurring .rc-new-btn:hover { filter: brightness(.97); }
+.finance-block.finance-recurring .rc-new-btn.is-loan { border-color: var(--fb-blue); background: var(--fb-blue-soft); color: var(--fb-blue); margin-top: 8px; }
+.finance-block.finance-recurring .rc-empty { text-align: center; color: var(--text-muted); padding: 18px 0; font-size: 13px; }
+
+/* finance-recurring 弹窗（非 .finance-block 作用域，需独立补样式） */
+.finance-recurring-modal .rc-preview {
+  background: var(--fb-blue-soft); border: 1px solid transparent;
+  border-radius: var(--fb-radius-sm); padding: 10px 12px; margin-bottom: 12px;
+}
+.finance-recurring-modal .rc-preview-title { font-size: 12px; font-weight: 600; color: var(--fb-blue); margin-bottom: 4px; }
+.finance-recurring-modal .rc-preview-main { font-size: 20px; font-weight: 700; }
+.finance-recurring-modal .rc-preview-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.finance-recurring-modal .rc-preview-row { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.finance-recurring-modal .rc-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+.finance-recurring-modal .is-hidden { display: none !important; }

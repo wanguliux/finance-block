@@ -48,12 +48,13 @@ import {
   // 引擎事件（只含财务影响字段）——与本文件的 ChartEvent（只含渲染字段）区分开
   type LifeEvent as EngineLifeEvent,
 } from '../engine/fiCalc';
-import { currencySymbol, buildSymbolMap, buildFxRates, convertToBase } from '../engine/fx';
+import { currencySymbol, buildSymbolMap, buildFxRates } from '../engine/fx';
 import { bucketAssets, type AssetBuckets } from '../engine/assetBuckets';
-import type { FinanceConfig, AccountDef, AmountInCents, LifeEventType } from '../types';
+import { buildAccountFlows, computeNetWorthSeries } from '../engine/networth';
+import type { FinanceConfig, AccountDef, AmountInCents, LifeEventType, Valuation } from '../types';
 import { calculateBalances } from '../ledger/closing';
 import type { Indexer, IndexEntry } from '../ledger/indexer';
-import { classOfAccount } from '../util/ledgerView';
+import { resolveAccountClass } from '../util/ledgerView';
 import { t } from '../i18n';
 import { BLOCK_ICONS, setSvg } from './icons';
 
@@ -219,13 +220,13 @@ function buildBalanceMap(posted: IndexEntry[]): Map<string, AmountInCents> {
 /** 近 12 个月实际年花费 + 年净储蓄（按「今天购买力」年化），用于预填滑条。
  * 净储蓄 = -Σ(收入类+费用类分录的金额)：beancount 借贷方向下收入为负、支出为正，
  * 故 -leg.amount 即把「收入 − 支出」折算成正的年净储蓄。 */
-function deriveLedgerCashflow(posted: IndexEntry[]): { annualSpend: number; annualSavings: number } {
+function deriveLedgerCashflow(posted: IndexEntry[], config?: FinanceConfig): { annualSpend: number; annualSavings: number } {
   const expenseByMonth = new Map<string, number>(); // 月 → 支出净额（正=支出）
   const netByMonth = new Map<string, number>(); // 月 → 净储蓄（正=储蓄）
   for (const e of posted) {
     const ym = e.transaction.date.slice(0, 7);
     for (const leg of e.transaction.legs) {
-      const cls = classOfAccount(leg.account);
+      const cls = resolveAccountClass(leg.account, config);
       if (cls !== 'income' && cls !== 'expense') continue;
       expenseByMonth.set(ym, (expenseByMonth.get(ym) ?? 0) + leg.amount);
       netByMonth.set(ym, (netByMonth.get(ym) ?? 0) - leg.amount);
@@ -325,16 +326,26 @@ interface HistoricalPoint {
   netWorth: number; // 分，基准币种
 }
 
+/** YYYY-MM-DD */
+function ymdOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /**
- * 从已入账的 beancount 交易中推算历史净资产。
+ * 历史净资产曲线（《报告》#8）——按日期切片重算**真实净资产**。
  *
- * 逻辑：每笔交易按 Income / Expense 分录的贝算符号折算净资变动，
- * 逐年累加，记录每一岁边界（整岁）的净资产水位。
- * Asset/Liability 账户的贝算分录与 Income/Expense 额等互为对方，
- * 故仅需 Income + Expense 即可算出净资变化（复式恒等）。
+ * 旧实现的坑：只累加 Income − Expense，从 0 起跑。
+ * 于是 ① 起点强制为 0，忽略了记账开始前就已有的存量资产；
+ *      ② 全程只看现金流，市值涨跌（股票 / 房产估值）完全缺席；
+ *      ③ 末点 ≠ 今日净资产，历史段和模拟段在「当前年龄」处必然断层——
+ *         图上看就是历史柱子和曲线对不上，用户一眼就发现数字打架。
+ *
+ * 现改为对每个年龄边界做一次 `computeNetWorthSeries` 切片：
+ * 账面余额取该日之前的流水累加，市值取该日之前最新的估值行并做结转推演（#4），
+ * 折旧账户按该日的折旧进度派生。末点用**今天**而非 12-31，
+ * 于是历史段末点 ≡ 模拟段起点（今日净资产），断层消失。
  *
  * 返回按 age 升序的点数组，从 startAge（含）到 currentAge（含）。
- * 若记账跨度不够（最早数据在 startAge 之后），则 startAge 附近填 0。
  */
 function computeHistoricalNetWorth(
   posted: IndexEntry[],
@@ -342,49 +353,48 @@ function computeHistoricalNetWorth(
   baseCurrency: string,
   startAge: number,
   currentAge: number,
+  valuations: Valuation[] = [],
 ): HistoricalPoint[] {
   const fxRates = buildFxRates(config.currencies, baseCurrency);
-  const accountClass = new Map<string, string>();
-  for (const a of config.accounts) accountClass.set(a.name, a.class);
-
-  // 按日期升序，累积净资产
-  const sorted = [...posted].sort((a, b) => a.transaction.date.localeCompare(b.transaction.date));
-
-  // 推算当前年份，以及 startAge 对应的绝对年份
-  const currentYear = new Date().getFullYear();
+  const today = new Date();
+  const currentYear = today.getFullYear();
   const startYear = currentYear - (currentAge - startAge);
 
-  // 逐年累计：year → netWorth delta (分，基准币)
-  const deltaByYear = new Map<number, number>();
-  for (const entry of sorted) {
-    const year = parseInt(entry.transaction.date.slice(0, 4), 10);
-    if (year < startYear) continue; // 早于起始年的旧数据忽略
-    const currency = entry.transaction.currency || baseCurrency;
-    let delta = 0;
-    for (const leg of entry.transaction.legs) {
-      const cls = accountClass.get(leg.account) || classOfAccount(leg.account);
-      if (cls !== 'income' && cls !== 'expense') continue;
-      // beancount: 收入为负、支出为正；取 -leg.amount 使之转为"赚/花"正向值
-      // delta = 收入 − 支出（正=净资增加，负=净资减少）
-      delta += -leg.amount;
-    }
-    // 跨币种换算到基准币种
-    if (currency !== baseCurrency && delta !== 0) {
-      delta = convertToBase(delta, currency, fxRates, baseCurrency);
-    }
-    deltaByYear.set(year, (deltaByYear.get(year) ?? 0) + delta);
+  const flows = buildAccountFlows(posted.map((e) => e.transaction));
+
+  // 空窗裁剪：账本开始之前的年份没有任何数据，画出来是一排 0 柱，反而误导。
+  // 故历史段从「首笔记账所在年」起步（若它晚于 startAge 对应的年份）。
+  let firstDate = posted[0]?.transaction.date ?? '';
+  for (const e of posted) {
+    if (e.transaction.date && e.transaction.date < firstDate) firstDate = e.transaction.date;
+  }
+  const firstYear = firstDate ? parseInt(firstDate.slice(0, 4), 10) : startYear;
+  const fromYear = Math.max(startYear, Number.isFinite(firstYear) ? firstYear : startYear);
+  const fromAge = startAge + (fromYear - startYear);
+  if (fromAge > currentAge) return [];
+
+  // 每个年龄边界一个切片日：过往年份取年末，当年取今天（保证末点=今日净资产）
+  const todayStr = ymdOf(today);
+  const dates: string[] = [];
+  for (let age = fromAge; age <= currentAge; age++) {
+    const year = fromYear + (age - fromAge);
+    dates.push(year >= currentYear ? todayStr : `${year}-12-31`);
   }
 
-  // 逐岁输出净资产水位
-  const result: HistoricalPoint[] = [];
-  let running = 0;
-  for (let age = startAge; age <= currentAge; age++) {
-    const year = startYear + (age - startAge);
-    const delta = deltaByYear.get(year) ?? 0;
-    running += delta;
-    result.push({ age, year, netWorth: running });
-  }
-  return result;
+  const series = computeNetWorthSeries(config.accounts, flows, dates, {
+    valuations,
+    staleDaysDefault: config.defaultStaleDays ?? 30,
+    today,
+    fxRates,
+    baseCurrency,
+  });
+  const byDate = new Map(series.map((p) => [p.date, p.marketNetWorth]));
+
+  return dates.map((date, i) => ({
+    age: fromAge + i,
+    year: fromYear + i,
+    netWorth: byDate.get(date) ?? 0,
+  }));
 }
 
 // ─── 主渲染 ───────────────────────────────────────────────────
@@ -430,7 +440,7 @@ export function renderFICalc(
     if (posted.length === 0) {
       assetMode = false; // 无账本数据 → 退化为手填
     } else {
-      const flow = deriveLedgerCashflow(posted);
+      const flow = deriveLedgerCashflow(posted, config);
       deriveSpendCents = flow.annualSpend;
       deriveSavingsCents = flow.annualSavings;
       const bufferMonths = cached?.bufferMonths ?? params.bufferMonths ?? BUFFER_MONTHS_DEFAULT;
@@ -439,7 +449,7 @@ export function renderFICalc(
         buildBalanceMap(posted),
         indexer!.getValuations(),
         undefined,
-        { annualSpend: deriveSpendCents, bufferMonths },
+        { annualSpend: deriveSpendCents, bufferMonths, flows: buildAccountFlows(posted.map((e) => e.transaction)) },
       );
       if (!derived) assetMode = false;
     }
@@ -875,7 +885,7 @@ export function renderFICalc(
       if (posted.length > 0) {
         historical = computeHistoricalNetWorth(
           posted, config, config.baseCurrency ?? 'CNY',
-          startAge, age,
+          startAge, age, indexer.getValuations(),
         );
       }
     }
@@ -1376,11 +1386,18 @@ function renderLifeCycle(
   const H = 344;
 
   const allNet = merged.map((p) => p.netWorth);
-  const maxNet = Math.max(...allNet, 1) * 1.08;
+  // 净资产可以为负（房贷期「资不抵债」是常态），故 y 轴下界随数据走：
+  // 有负值时给下方留 8% 余量并画零基线；全为正时下界=0，零线即底边（与旧版视觉一致）。
+  const rawMinNet = Math.min(...allNet, 0);
+  const maxNet = Math.max(Math.max(...allNet, 0) * 1.08, 1);
+  const minNet = rawMinNet < 0 ? rawMinNet * 1.08 : 0;
+  const netSpan = maxNet - minNet;
   const allFlow = merged.filter((p) => p.safeCashflow != null).map((p) => Math.abs(p.safeCashflow!));
   const maxFlow = Math.max(...allFlow, 1) * 1.15;
   const px = (i: number): number => PAD_L + (innerW * i) / (nTotal - 1);
-  const pyNet = (v: number): number => netTop + (netBottom - netTop) * (1 - Math.min(Math.max(v, 0), maxNet) / maxNet);
+  const pyNet = (v: number): number =>
+    netTop + ((netBottom - netTop) * (maxNet - Math.min(Math.max(v, minNet), maxNet))) / netSpan;
+  const netZeroY = pyNet(0);
   const pyFlow = (v: number): number => zeroY - (v / maxFlow) * half;
 
   const wrap = parent.createDiv({ cls: 'fc-lc3' });
@@ -1426,18 +1443,30 @@ function renderLifeCycle(
   const barW = Math.max(2.5, (innerW / nTotal) * 0.55);
   for (let i = 0; i < nTotal; i++) {
     const m = merged[i];
+    if (!m.isHistorical) continue;
     const x = (px(i) - barW / 2).toFixed(1);
-    const y = pyNet(m.netWorth).toFixed(1);
-    const h = (netBottom - pyNet(m.netWorth)).toFixed(1);
-    if (m.isHistorical) {
-      svgEl(svg, 'rect', { x, y, width: barW.toFixed(1), height: h, class: 'fc-hist-bar' });
-    }
+    const y = pyNet(m.netWorth);
+    // 负净资产从零基线向下长（红柱），正的向上长
+    const top = Math.min(y, netZeroY);
+    const h = Math.max(Math.abs(netZeroY - y), 0.8);
+    svgEl(svg, 'rect', {
+      x,
+      y: top.toFixed(1),
+      width: barW.toFixed(1),
+      height: h.toFixed(1),
+      class: m.netWorth < 0 ? 'fc-hist-bar is-neg' : 'fc-hist-bar',
+    });
+  }
+  // 净资产零基线（仅在存在负净资产时才画，否则零线与底边重合、画了是噪声）
+  if (rawMinNet < 0) {
+    svgEl(svg, 'line', { x1: PAD_L, y1: netZeroY, x2: W - PAD_R, y2: netZeroY, class: 'fc-net-zero-line' });
+    svgEl(svg, 'text', { x: W - PAD_R, y: netZeroY - 3, 'text-anchor': 'end', class: 'fc-tick' }).textContent = '0';
   }
   // 模拟段净资产面积+曲线（从 simStartAge 到 endAge）
   const simPts = merged.slice(simStartIdx);
   const netLine = simPts.map((p, i) => `${px(simStartIdx + i).toFixed(1)},${pyNet(p.netWorth).toFixed(1)}`).join(' ');
   svgEl(svg, 'polygon', {
-    points: `${netLine} ${px(simEndIdx).toFixed(1)},${netBottom} ${px(simStartIdx).toFixed(1)},${netBottom}`,
+    points: `${netLine} ${px(simEndIdx).toFixed(1)},${netZeroY.toFixed(1)} ${px(simStartIdx).toFixed(1)},${netZeroY.toFixed(1)}`,
     class: 'fc-net-area',
   });
   svgEl(svg, 'polyline', { points: netLine, fill: 'none', class: 'fc-net' });

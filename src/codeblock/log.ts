@@ -1,5 +1,9 @@
 /**
- * finance-log 渲染块：从索引取数，倒序展示交易流水（时间线式）。
+ * finance-log 渲染块（v2.5）：流水查询面板。
+ *
+ * 职责：从索引取数，逐笔展示所有已入账复式交易（不含草稿，除非显式筛选）。
+ * 去掉日分组——本就是查询视图，直接按筛选条件铺开全部匹配记录。
+ * 每笔一行、净变动由账户类别推导、点击行展开 leg 明细。
  *
  * 代码块语法（所有参数均为选填）：
  *   ```finance-log
@@ -14,20 +18,21 @@
  * 参数语义：
  *   date: YYYY-MM-DD — 窗口的**起始日**（即最新的一天），缺省为今天
  *   day: N           — 从起始日往前数 N 天（含起始日，默认 30；1=只看起始日当天；0=不限天数）
- *                      例：date=2026-07-15 且 day=3 → 命中 07-13 / 07-14 / 07-15
- *   amount: 表达式   — 按金额绝对值筛选，单位「元」；支持 >100 / >=100 / <50 / <=50 / 100-200 / 100
+ *   amount: 表达式   — 按金额绝对值筛选，单位「元」
  *   account: 现金    — 任一分录账户命中即算（子串匹配，忽略大小写）
  *   type: 餐饮       — 按交易类型筛选
  *   owner: 自己      — 按归属维度筛选
  *   id: ^t-xxx       — 按块引用 ID 精确查询（多个用 ; 分隔），命中后忽略 date/day 窗口
  *
- * 原型交互：顶部筛选（全部/收入/支出/草稿）+ 动态统计（随显示条数实时重算，草稿不计入收支）。
+ * 交互：kind 下拉 + 账户下拉 + 搜索框 + 点击行展开 leg 明细。
  */
 
 import type { MarkdownPostProcessorContext, App } from 'obsidian';
 import type { Indexer, IndexEntry } from '../ledger/indexer';
+import type { FinanceConfig } from '../types';
 import { t } from '../i18n';
 import { todayLocal, daysBefore, isDateStr } from '../util/date';
+import { resolveAccountClass, dirOfPost } from '../util/ledgerView';
 import { BLOCK_ICONS, setSvg } from './icons';
 
 /** 金额区间（闭区间，单位：分）。严格比较在解析阶段已折算成闭区间边界。 */
@@ -61,11 +66,8 @@ const NUM = String.raw`-?\d+(?:\.\d+)?`;
 /**
  * 解析金额筛选表达式，统一折算为**闭区间**（单位：分）。
  *
- * 因为金额内部是整数分，严格比较可以无损转成闭区间：`>100` ≡ `>=100.01` ≡ min=10001。
- * 这样下游只需一套 min/max 比较逻辑，不必再维护 exclusive 标志位。
- *
  * 支持：>100 / ≥100 / >=100 / <50 / ≤50 / <=50 / 100-200 / 100~200 / =100 / 100
- * 无法识别时返回 undefined（视为不筛选，避免把用户的账目全部隐藏）。
+ * 无法识别时返回 undefined（视为不筛选）。
  */
 export function parseAmountRange(raw: string): AmountRange | undefined {
   const s = raw.trim();
@@ -85,7 +87,6 @@ export function parseAmountRange(raw: string): AmountRange | undefined {
   if ((m = new RegExp(`^<\\s*(${NUM})$`).exec(s))) {
     return { max: yuanToCents(m[1]) - 1, raw: s };
   }
-  // 区间：100-200 / 100~200 / 100..200（负号已被前面的单边表达式排除，此处只认正数区间）
   if ((m = new RegExp(`^(\\d+(?:\\.\\d+)?)\\s*(?:-|~|\\.\\.)\\s*(\\d+(?:\\.\\d+)?)$`).exec(s))) {
     const a = yuanToCents(m[1]);
     const b = yuanToCents(m[2]);
@@ -157,7 +158,7 @@ function isCarryForwardEntry(entry: IndexEntry): boolean {
 
 /**
  * 取一笔交易的「代表金额」（分，带符号）。
- * 与卡片右侧展示的金额保持同一口径：优先支出腿（负），否则收入腿（正）。
+ * 优先支出腿（负），否则收入腿（正）。
  */
 export function entryAmount(entry: IndexEntry): number {
   const legs = entry.transaction.legs;
@@ -165,6 +166,77 @@ export function entryAmount(entry: IndexEntry): number {
   if (outLeg) return outLeg.amount;
   const inLeg = legs.find((l) => l.amount > 0);
   return inLeg ? inLeg.amount : 0;
+}
+
+/**
+ * 一笔交易的收入/支出金额（分），严格按账户类别推导：
+ * income = Σ|收入类 leg|，expense = Σ|费用类 leg|。
+ * 资产转换（买/卖/转账）只动资产账户，income/expense 均为 0。
+ */
+export function entryFlow(entry: IndexEntry, config?: FinanceConfig): { income: number; expense: number } {
+  let income = 0;
+  let expense = 0;
+  for (const leg of entry.transaction.legs) {
+    const c = resolveAccountClass(leg.account, config);
+    if (c === 'income') income += Math.abs(leg.amount);
+    else if (c === 'expense') expense += Math.abs(leg.amount);
+  }
+  return { income, expense };
+}
+
+/** 一行流水展示用的方向标签（流入/流出/转账），按账户类别 + 净资产变动推导 */
+export function entryDir(entry: IndexEntry, config?: FinanceConfig): { label: string; cls: string } {
+  const { income, expense } = entryFlow(entry, config);
+  if (expense > 0) return { label: t('log.dir.out'), cls: 'out' };
+  if (income > 0) return { label: t('log.dir.in'), cls: 'in' };
+  const net = entry.transaction.legs.reduce((s, l) => s + l.amount, 0);
+  if (net > 0) return { label: t('log.dir.in'), cls: 'in' };
+  if (net < 0) return { label: t('log.dir.out'), cls: 'out' };
+  return { label: t('log.dir.transfer'), cls: 'flat' };
+}
+
+/**
+ * 推导一笔交易的语义分类（kind），用于流水行显示与筛选。
+ * 基于交易结构（legs 账户类别）推导，不依赖 txnType 标签。
+ */
+export function entryKind(entry: IndexEntry, config?: FinanceConfig): {
+  kind: string;
+  label: string;
+  cls: string;
+} {
+  const { income, expense } = entryFlow(entry, config);
+
+  if (expense > 0 && income === 0) {
+    return { kind: 'expense', label: t('log.kind.expense'), cls: 'k-out' };
+  }
+  if (income > 0 && expense === 0) {
+    return { kind: 'income', label: t('log.kind.income'), cls: 'k-in' };
+  }
+
+  // 纯 balance sheet 变动 → 判断是买/卖/转账
+  const allBalanceSheet = entry.transaction.legs.every((l) => {
+    const c = resolveAccountClass(l.account, config);
+    return c === 'asset' || c === 'liability' || c === 'equity';
+  });
+
+  if (allBalanceSheet && entry.transaction.legs.length >= 2) {
+    const assetLegs = entry.transaction.legs.filter((l) => resolveAccountClass(l.account, config) === 'asset');
+    if (assetLegs.length >= 2) {
+      const assetDelta = assetLegs.reduce((s, l) => s + l.amount, 0);
+      if (assetDelta > 0) return { kind: 'buy', label: t('log.kind.buy'), cls: 'k-flat' };
+      if (assetDelta < 0) return { kind: 'sell', label: t('log.kind.sell'), cls: 'k-flat' };
+    }
+    return { kind: 'transfer', label: t('log.kind.transfer'), cls: 'k-flat' };
+  }
+
+  // 混合（收入+支出同时出现）→ 按净额判定
+  if (income > 0 && expense > 0) {
+    return income >= expense
+      ? { kind: 'income', label: t('log.kind.income'), cls: 'k-in' }
+      : { kind: 'expense', label: t('log.kind.expense'), cls: 'k-out' };
+  }
+
+  return { kind: 'transfer', label: t('log.kind.transfer'), cls: 'k-flat' };
 }
 
 function includesFold(haystack: string | undefined, needle: string): boolean {
@@ -175,8 +247,6 @@ function includesFold(haystack: string | undefined, needle: string): boolean {
  * 全部筛选逻辑的唯一入口（纯函数，便于单测）。
  *
  * 顺序：排除期初结转 → ID 精确查询 or 日期窗口 → 属性筛选（金额/账户/类型/归属）。
- * ID 与日期窗口互斥：给了 ID 就说明用户要看指定的那几笔，不该再被时间窗口裁掉。
- * 属性筛选对两条路径都生效，语义一致。
  */
 export function filterEntries(
   entries: IndexEntry[],
@@ -196,7 +266,6 @@ export function filterEntries(
       const start = daysBefore(anchor, params.day - 1);
       filtered = filtered.filter((e) => e.transaction.date >= start && e.transaction.date <= anchor);
     } else if (params.date) {
-      // day=0 表示不限天数；给了起始日时仍以其为上界（看该日及更早的全部账目）
       filtered = filtered.filter((e) => e.transaction.date <= anchor);
     }
   }
@@ -225,7 +294,7 @@ export function filterEntries(
   return filtered;
 }
 
-/** 头部 pill 的时间范围文案：把 date + day 的组合翻译成人话 */
+/** 头部 pill 的时间范围文案 */
 function buildRangeLabel(params: LogParams): string {
   if (params.ids && params.ids.length > 0) {
     return t('log.dayLabel.byId', { n: String(params.ids.length) });
@@ -252,6 +321,80 @@ function collectCriteria(params: LogParams): Array<[string, string]> {
   return out;
 }
 
+/**
+ * 计算每笔交易的「头条」净变动信息（用于流水行主显示）。
+ * 返回：方向标签、金额、方向 CSS class、可选附加信息（如已实现损益）。
+ */
+function headline(
+  entry: IndexEntry,
+  config?: FinanceConfig,
+): { amount: number; dir: string; cls: string; sub: string } {
+  const legs = entry.transaction.legs;
+  const assetLegs = legs.filter((l) => resolveAccountClass(l.account, config) === 'asset');
+  const assetDelta = assetLegs.reduce((s, l) => s + l.amount, 0);
+  const nonCashAsset = assetLegs.filter((l) => !/现金|活期/.test(l.account));
+  const cashPost = legs.find((l) => /现金|活期/.test(l.account));
+  const gainPost = legs.find((l) => l.account.includes('投资收益'));
+
+  const kind = entryKind(entry, config);
+  let amount: number;
+  let dir: string;
+  let cls: string;
+  let sub = '';
+
+  switch (kind.kind) {
+    case 'income':
+      amount = Math.abs(assetDelta);
+      dir = t('log.headline.inflow');
+      cls = 'in';
+      break;
+    case 'expense':
+      amount = Math.abs(assetDelta);
+      dir = t('log.headline.outflow');
+      cls = 'out';
+      break;
+    case 'buy':
+      amount = nonCashAsset.length ? Math.abs(nonCashAsset[0].amount) : Math.abs(assetDelta);
+      dir = t('log.headline.buyAsset');
+      cls = 'flat';
+      break;
+    case 'sell': {
+      amount = cashPost ? Math.abs(cashPost.amount) : Math.abs(assetDelta);
+      dir = t('log.headline.sellAsset');
+      cls = 'flat';
+      if (gainPost) {
+        const gainAmt = Math.abs(gainPost.amount);
+        const yuan = gainAmt / 100;
+        const sign = gainPost.amount >= 0 ? '+' : '-';
+        sub = `${t('log.headline.realized')} ${sign}¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      }
+      break;
+    }
+    default:
+      // transfer / mixed
+      amount = Math.abs(assetDelta);
+      dir = t('log.headline.transfer');
+      cls = 'flat';
+  }
+
+  return { amount, dir, cls, sub };
+}
+
+/** 格式化每条 leg 的展示：金额取正值，方向用标签（流入/流出/来源/去向） */
+function postingLine(leg: { account: string; amount: number }, config?: FinanceConfig): {
+  account: string;
+  dirLabel: string;
+  dirCls: string;
+  amount: string;
+} {
+  const d = dirOfPost(leg, config);
+  const yuan = Math.abs(leg.amount) / 100;
+  const amount = `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return { account: leg.account, dirLabel: d.label, dirCls: d.cls, amount };
+}
+
+// ─── 主渲染函数 ──────────────────────────────────────────────
+
 export function renderLog(
   source: string,
   el: HTMLElement,
@@ -259,6 +402,7 @@ export function renderLog(
   _app: App,
   indexer: Indexer,
   _ledgerPath: string,
+  config?: FinanceConfig,
 ): void {
   const params = parseParams(source);
   el.empty();
@@ -269,11 +413,8 @@ export function renderLog(
   const head = root.createDiv({ cls: 'fb-head' });
   setSvg(head.createDiv({ cls: 'fb-icon' }), BLOCK_ICONS.log);
   head.createDiv({ cls: 'fb-title', text: t('log.title') });
-
   const dayLabel = buildRangeLabel(params);
-  head.createDiv({ cls: 'fb-pill', text: dayLabel });
-
-  const statusEl = root.createDiv({ cls: 'log-status' });
+  const rangePill = head.createDiv({ cls: 'fb-pill', text: dayLabel });
 
   // ── 生效中的筛选条件回显（仅在用了额外筛选时出现） ──
   const criteria = collectCriteria(params);
@@ -286,145 +427,177 @@ export function renderLog(
     }
   }
 
-  // ── 顶部筛选 + 动态统计 ──
-  const toolbar = root.createDiv({ cls: 'log-toolbar' });
-  const filter = toolbar.createDiv({
-    cls: 'log-filter',
-    attr: { role: 'group', 'aria-label': t('log.title') },
-  });
-  const filters: Array<[string, string]> = [
-    ['all', t('log.filter.all')],
-    ['in', t('log.filter.in')],
-    ['out', t('log.filter.out')],
-    ['draft', t('log.filter.draft')],
-  ];
-  const filterBtns: HTMLElement[] = [];
-  for (const [key, label] of filters) {
-    const b = filter.createEl('button', {
-      cls: `lf-btn${key === 'all' ? ' is-active' : ''}`,
-      text: label,
-      attr: { 'data-filter': key },
-    });
-    filterBtns.push(b);
-  }
-  const countEl = toolbar.createSpan({ cls: 'log-count' });
-
-  const summary = root.createDiv({ cls: 'bc-summary' });
-
   // ── 取数 ──
-  const allEntries = indexer.getAllTransactions();
+  const allEntries = [...indexer.getAllTransactions()];
   allEntries.sort((a, b) => b.transaction.date.localeCompare(a.transaction.date));
-
   const filtered = filterEntries(allEntries, params);
 
-  // ── 按日期分组渲染 ──
-  const rows: { el: HTMLElement; amt: number; draft: boolean }[] = [];
-  const listWrap = root.createDiv({ cls: 'log-lists' });
+  // ── 筛选工具栏（kind 下拉 + 账户下拉 + 搜索框） ──
+  const filterBar = root.createDiv({ cls: 'log-filterbar' });
+
+  // kind 下拉：从筛选结果动态提取可用 kind
+  filterBar.createSpan({ cls: 'flabel', text: t('log.filter.kindLabel') });
+  const kindSel = filterBar.createEl('select', { cls: 'log-select' });
+  kindSel.createEl('option', { text: t('log.filter.all'), value: '' });
+  const kindSet = new Map<string, string>();
+  for (const e of filtered) {
+    const k = entryKind(e, config);
+    if (!kindSet.has(k.kind)) kindSet.set(k.kind, k.label);
+  }
+  for (const [kind, label] of kindSet) {
+    kindSel.createEl('option', { text: label, value: kind });
+  }
+
+  // 账户下拉：从筛选结果动态提取
+  const acctSel = filterBar.createEl('select', { cls: 'log-select' });
+  acctSel.createEl('option', { text: t('log.filter.allAccounts'), value: '' });
+  const acctSet = new Set<string>();
+  for (const e of filtered) {
+    for (const leg of e.transaction.legs) acctSet.add(leg.account);
+  }
+  [...acctSet].sort().forEach((a) => acctSel.createEl('option', { text: a, value: a }));
+
+  // 搜索框
+  const searchInput = filterBar.createEl('input', {
+    cls: 'log-search',
+    type: 'text',
+    attr: { placeholder: t('log.filter.searchPlaceholder') },
+  });
+
+  // ── 统计摘要 ──
+  const summary = root.createDiv({ cls: 'bc-summary' });
+
+  // ── 流水列表 ──
+  const regEl = root.createDiv({ cls: 'reg-list' });
 
   if (filtered.length === 0) {
-    statusEl.textContent =
-      params.ids && params.ids.length > 0
-        ? t('log.idNotFound')
-        : criteria.length > 0
-          ? t('log.emptyFiltered')
-          : t('log.empty');
+    const emptyMsg = params.ids && params.ids.length > 0
+      ? t('log.idNotFound')
+      : criteria.length > 0
+        ? t('log.emptyFiltered')
+        : t('log.empty');
+    regEl.createDiv({ cls: 'bc-empty', text: emptyMsg });
     summary.remove();
     return;
   }
 
-  let lastDate = '';
-  let currentList: HTMLElement | null = null;
-  for (const entry of filtered) {
-    if (entry.transaction.date !== lastDate) {
-      lastDate = entry.transaction.date;
-      listWrap.createDiv({ text: entry.transaction.date, cls: 'log-day' });
-      currentList = listWrap.createDiv({ cls: 'log-list' });
+  // ── 渲染与筛选 ──
+  interface RowData {
+    el: HTMLElement;
+    entry: IndexEntry;
+    flow: { income: number; expense: number };
+  }
+  const rows: RowData[] = [];
+
+  function renderRows(): void {
+    regEl.empty();
+    rows.length = 0;
+
+    const kindFilter = kindSel.value;
+    const acctFilter = acctSel.value;
+    const search = searchInput.value.toLowerCase().trim();
+
+    const visible = filtered.filter((e) => {
+      if (kindFilter) {
+        const k = entryKind(e, config);
+        if (k.kind !== kindFilter) return false;
+      }
+      if (acctFilter && !e.transaction.legs.some((l) => l.account === acctFilter)) return false;
+      if (search) {
+        const hay = (
+          e.transaction.narration +
+          ' ' +
+          e.transaction.legs.map((l) => l.account).join(' ')
+        ).toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    });
+
+    if (visible.length === 0) {
+      regEl.createDiv({ cls: 'bc-empty', text: t('log.emptyFiltered') });
+      updateSummary([]);
+      return;
     }
-    const rowInfo = renderEntry(currentList!, entry);
-    rows.push(rowInfo);
+
+    for (const entry of visible) {
+      const rowEl = renderEntry(regEl, entry, config);
+      const flow = entryFlow(entry, config);
+      rows.push({ el: rowEl, entry, flow });
+    }
+
+    updateSummary(visible);
   }
 
-  statusEl.textContent = t('log.count', { label: dayLabel, n: String(filtered.length) });
-
-  // ── 动态统计 + 筛选逻辑（随显示条数变化） ──
-  function recompute(): void {
+  function updateSummary(visible: IndexEntry[]): void {
     let income = 0;
     let expense = 0;
-    let count = 0;
     let drafts = 0;
-    for (const r of rows) {
-      if (r.el.style.display === 'none') continue;
-      count++;
-      if (r.draft) {
+    for (const e of visible) {
+      if (e.isDraft) {
         drafts++;
         continue;
       }
-      if (r.amt > 0) income += r.amt;
-      else expense += Math.abs(r.amt);
+      const f = entryFlow(e, config);
+      income += f.income;
+      expense += f.expense;
     }
     const net = income - expense;
     summary.innerHTML =
-      `<span class="s-item">${t('log.summary.show', { n: String(count) })}</span>` +
+      `<span class="s-item">${t('log.summary.count', { n: String(visible.length) })}</span>` +
       `<span class="s-item">${t('log.summary.income')} <b class="pos">${fmtAmount(income)}</b></span>` +
       `<span class="s-item">${t('log.summary.expense')} <b class="neg">${fmtAmount(-expense)}</b></span>` +
       `<span class="s-item">${t('log.summary.net')} <b class="${net >= 0 ? 'pos' : 'neg'}">${fmtAmount(net)}</b></span>` +
       (drafts ? `<span class="s-item" style="color:var(--text-faint)">${t('log.summary.draftNote', { n: String(drafts) })}</span>` : '');
-    countEl.textContent = t('log.summary.show', { n: String(count) });
+
+    rangePill.textContent = `${dayLabel} · ${t('log.summary.count', { n: String(visible.length) })}`;
   }
 
-  function applyFilter(type: string): void {
-    for (const r of rows) {
-      let show = true;
-      if (type === 'in') show = r.amt > 0 && !r.draft;
-      else if (type === 'out') show = r.amt < 0 && !r.draft;
-      else if (type === 'draft') show = r.draft;
-      r.el.style.display = show ? '' : 'none';
-    }
-    // 隐藏没有可见行的日期分组
-    listWrap.querySelectorAll('.log-day').forEach((dayEl) => {
-      const list = dayEl.nextElementSibling;
-      if (list && list.classList.contains('log-list')) {
-        const anyVisible = Array.from(list.children).some((c) => (c as HTMLElement).style.display !== 'none');
-        (dayEl as HTMLElement).style.display = anyVisible ? '' : 'none';
-      }
-    });
-    recompute();
-  }
+  // 事件绑定
+  kindSel.addEventListener('change', () => renderRows());
+  acctSel.addEventListener('change', () => renderRows());
+  searchInput.addEventListener('input', () => renderRows());
 
-  for (const b of filterBtns) {
-    b.addEventListener('click', () => {
-      filterBtns.forEach((x) => x.removeClass('is-active'));
-      b.addClass('is-active');
-      applyFilter(b.getAttribute('data-filter') || 'all');
-    });
-  }
-
-  recompute();
+  renderRows();
 }
 
-function renderEntry(parent: HTMLElement, entry: IndexEntry): { el: HTMLElement; amt: number; draft: boolean } {
+/** 渲染单笔流水行（点击展开 leg 明细） */
+function renderEntry(parent: HTMLElement, entry: IndexEntry, config?: FinanceConfig): HTMLElement {
   const txn = entry.transaction;
   const narration = txn.narration || t('log.noNarration');
+  const h = headline(entry, config);
+  const kind = entryKind(entry, config);
 
-  // 与 filterEntries 的 amount 筛选共用同一口径，避免「筛出来的金额」与「显示的金额」对不上
-  const amt = entryAmount(entry);
+  const row = parent.createDiv({ cls: `reg-row ${entry.isDraft ? 'is-draft' : ''}`.trim() });
 
-  const row = parent.createDiv({ cls: `log-row ${entry.isDraft ? 'is-draft' : ''}` });
-  row.createDiv({ cls: 'log-dot' });
+  // 主行：日期 | kind pill | 摘要 | 方向 | 金额 [+已实现]
+  const main = row.createDiv({ cls: 'reg-main' });
+  main.createSpan({ cls: 'reg-date', text: txn.date.slice(5) }); // MM-DD
+  main.createSpan({ cls: `kind-pill ${kind.cls}`, text: kind.label });
+  main.createSpan({ cls: 'reg-narr', text: narration });
+  main.createSpan({ cls: `reg-dir ${h.cls}`, text: h.dir });
 
-  const main = row.createDiv({ cls: 'log-main' });
-  main.createDiv({ cls: 'log-narr', text: narration });
-  const accounts = txn.legs.map((l) => l.account).join(' → ');
-  main.createDiv({ cls: 'log-sub', text: accounts });
+  const sign = h.cls === 'in' ? '+' : h.cls === 'out' ? '-' : '';
+  const yuan = h.amount / 100;
+  const amtText = `${sign}¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  main.createSpan({ cls: `reg-amt ${h.cls}`, text: amtText });
 
-  const right = row.createDiv({ cls: 'log-right' });
-  if (amt !== 0) {
-    right.createDiv({ cls: `log-amt ${amt > 0 ? 'in' : 'out'}`, text: fmtAmount(amt) });
+  if (h.sub) {
+    main.createSpan({ cls: 'reg-sub', text: h.sub });
   }
-  right.createDiv({
-    cls: `log-cat ${entry.isDraft ? 'is-draft' : ''}`,
-    text: entry.isDraft ? `草稿 · 待确认` : txn.txnType || '',
-  });
 
-  return { el: row, amt, draft: entry.isDraft };
+  // 分录明细（默认隐藏，点击行展开）
+  const posts = row.createDiv({ cls: 'reg-posts' });
+  for (const leg of txn.legs) {
+    const p = postingLine(leg, config);
+    const postEl = posts.createDiv({ cls: 'reg-post' });
+    postEl.createSpan({ cls: 'reg-pacc', text: p.account });
+    postEl.createSpan({ cls: `reg-pdir ${p.dirCls}`, text: p.dirLabel });
+    postEl.createSpan({ cls: 'reg-pamt', text: p.amount });
+  }
+
+  // 点击行切换展开
+  row.addEventListener('click', () => row.toggleClass('is-open', !row.hasClass('is-open')));
+
+  return row;
 }

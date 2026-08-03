@@ -198,3 +198,66 @@ describe('fin-beancount 解析器', () => {
     expect(transactions[1].id).toBe('^t-202607290002');
   });
 });
+
+describe('估值指令 custom "fb-valuation"', () => {
+  it('解析单条估值（金额以分为单位）', () => {
+    const source = `2026-08-01 custom "fb-valuation" 股票 5300000`;
+    const { valuations, transactions, errors } = parseFinBeancount(source);
+    expect(errors).toHaveLength(0);
+    expect(transactions).toHaveLength(0);
+    expect(valuations).toHaveLength(1);
+    expect(valuations[0]).toMatchObject({
+      date: '2026-08-01',
+      account: '股票',
+      amount: 5300000,
+    });
+    expect(valuations[0].currency).toBeUndefined();
+  });
+
+  it('解析带币种的估值', () => {
+    const source = `2026-08-01 custom "fb-valuation" 美股 720000 USD`;
+    const { valuations } = parseFinBeancount(source);
+    expect(valuations).toHaveLength(1);
+    expect(valuations[0].account).toBe('美股');
+    expect(valuations[0].amount).toBe(720000);
+    expect(valuations[0].currency).toBe('USD');
+  });
+
+  it('解析带行内注释的估值', () => {
+    const source = `2026-08-01 custom "fb-valuation" 股票 5300000   ; 约 350 股，按收盘价`;
+    const { valuations, errors } = parseFinBeancount(source);
+    expect(errors).toHaveLength(0);
+    expect(valuations).toHaveLength(1);
+    expect(valuations[0].comment).toBe('约 350 股，按收盘价');
+  });
+
+  it('捕获 ^v- 块引用（与 poster 写入一致）', () => {
+    const source = `2026-08-01 custom "fb-valuation" 股票 5300000
+^v-20260801120000`;
+    const { valuations } = parseFinBeancount(source);
+    expect(valuations).toHaveLength(1);
+    expect(valuations[0].blockRef).toBe('^v-20260801120000');
+  });
+
+  it('估值与交易混合：各自独立计数，互不污染', () => {
+    const source = `2026-08-01 * 买股票
+  现金 -5000000
+  股票 5000000
+
+2026-08-01 custom "fb-valuation" 股票 5300000`;
+    const { transactions, valuations, errors } = parseFinBeancount(source);
+    expect(errors).toHaveLength(0);
+    expect(transactions).toHaveLength(1);
+    expect(valuations).toHaveLength(1);
+    expect(transactions[0].legs).toHaveLength(2);
+  });
+
+  it('多条估值分别解析', () => {
+    const source = `2026-08-01 custom "fb-valuation" 股票 5300000
+2026-08-01 custom "fb-valuation" 房产 20000000`;
+    const { valuations } = parseFinBeancount(source);
+    expect(valuations).toHaveLength(2);
+    expect(valuations[1].account).toBe('房产');
+    expect(valuations[1].amount).toBe(20000000);
+  });
+});

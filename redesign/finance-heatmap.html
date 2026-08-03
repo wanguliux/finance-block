@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Finance Block · finance-heatmap 支出热力图原型</title>
+<style>
+  :root {
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+    --fb-accent: #7c5cff; --fb-accent-strong: #6a48f5; --fb-accent-soft: rgba(124, 92, 255, 0.12);
+    --fb-green: #2fa86a; --fb-green-soft: rgba(47, 168, 106, 0.12);
+    --fb-amber: #e0922f; --fb-amber-soft: rgba(224, 146, 47, 0.12);
+    --fb-red: #e5484d; --fb-red-soft: rgba(229, 72, 77, 0.12);
+    --fb-radius: 12px; --fb-radius-sm: 8px; --fb-radius-pill: 999px;
+    --background-primary: #ffffff; --background-primary-alt: #f6f7f9; --background-secondary: #f1f2f4;
+    --text-normal: #2b2b33; --text-muted: #6b6f76; --text-faint: #9a9ea6;
+    --fb-border: rgba(15, 18, 25, 0.10);
+    --fb-shadow: 0 1px 2px rgba(15, 18, 25, 0.04), 0 6px 20px rgba(15, 18, 25, 0.06);
+    --fb-shadow-hover: 0 2px 8px rgba(15, 18, 25, 0.06), 0 12px 32px rgba(15, 18, 25, 0.10);
+    --fb-track: rgba(15, 18, 25, 0.08); --fb-row-hover: rgba(15, 18, 25, 0.03); --canvas: #eef0f3;
+  }
+  .theme-dark {
+    --background-primary: #1e1f24; --background-primary-alt: #25262c; --background-secondary: #2a2b32;
+    --text-normal: #e4e4e8; --text-muted: #a0a3ab; --text-faint: #71747d;
+    --fb-border: rgba(255, 255, 255, 0.10);
+    --fb-shadow: 0 1px 2px rgba(0, 0, 0, 0.30), 0 6px 22px rgba(0, 0, 0, 0.35);
+    --fb-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.35), 0 14px 34px rgba(0, 0, 0, 0.45);
+    --fb-track: rgba(255, 255, 255, 0.10); --fb-row-hover: rgba(255, 255, 255, 0.04); --canvas: #16171b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: var(--font-ui); background: var(--canvas); color: var(--text-normal); -webkit-font-smoothing: antialiased; transition: background .3s ease, color .3s ease; }
+  .proto-bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; padding: 12px 22px; background: color-mix(in srgb, var(--background-primary) 86%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--fb-border); }
+  .proto-bar h1 { font-size: 14px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  .proto-bar .sub { font-size: 12px; color: var(--text-faint); margin-left: 8px; font-weight: 400; }
+  .theme-toggle { font: inherit; font-size: 12.5px; font-weight: 500; padding: 6px 14px; border-radius: var(--fb-radius-pill); border: 1px solid var(--fb-border); background: var(--background-primary); color: var(--text-normal); cursor: pointer; transition: .15s; }
+  .theme-toggle:hover { border-color: var(--fb-accent); color: var(--fb-accent); }
+  .reading { max-width: 820px; margin: 0 auto; padding: 40px 24px 80px; }
+  .reading > .doc-h { font-size: 26px; font-weight: 700; margin: 0 0 6px; }
+  .reading > .doc-sub { font-size: 13px; color: var(--text-muted); margin: 0 0 24px; line-height: 1.7; }
+
+  .finance-block { border: 1px solid var(--fb-border); border-radius: var(--fb-radius); padding: 14px 16px; margin: 16px 0; background: var(--background-primary); box-shadow: var(--fb-shadow); font-size: 14px; line-height: 1.5; transition: box-shadow .2s ease; }
+  .finance-block:hover { box-shadow: var(--fb-shadow-hover); }
+  .fb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .fb-icon { width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: grid; place-items: center; background: var(--fb-accent-soft); color: var(--fb-accent); }
+  .fb-icon svg { width: 16px; height: 16px; }
+  .fb-title { flex: 1; font-size: 14px; font-weight: 600; letter-spacing: .01em; }
+  .fb-pill { font-size: 12px; font-weight: 500; color: var(--text-muted); background: var(--background-secondary); border: 1px solid var(--fb-border); padding: 3px 11px; border-radius: var(--fb-radius-pill); white-space: nowrap; }
+  .fb-pill.is-accent { color: var(--fb-accent); background: var(--fb-accent-soft); border-color: transparent; }
+
+  .hm-table { border-collapse: separate; border-spacing: 3px; width: 100%; }
+  .hm-table th { font-size: 10.5px; color: var(--text-muted); font-weight: 500; padding: 3px; white-space: nowrap; }
+  .hm-table td { min-width: 30px; height: 30px; text-align: center; font-size: 10.5px; font-variant-numeric: tabular-nums; border-radius: 6px; color: var(--text-normal); }
+  .hm-legend { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 11.5px; color: var(--text-muted); }
+  .hm-legend .bar { flex: 1; height: 8px; border-radius: 999px; background: linear-gradient(90deg, rgba(47,168,106,.12), rgba(47,168,106,.95)); min-width: 100px; }
+  .hm-cap { font-size: 12px; color: var(--text-muted); margin: 4px 0 10px; font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+  <div class="proto-bar">
+    <div><h1>Finance Block</h1><span class="sub">finance-heatmap · 支出热力图原型</span></div>
+    <button class="theme-toggle" id="toggle">切换深色</button>
+  </div>
+
+  <div class="reading">
+    <h1 class="doc-h">finance-heatmap · 支出热力图</h1>
+    <p class="doc-sub">分类 × 周 的支出强度矩阵：颜色越深代表该周该类支出越高，一眼定位「在某周某类上花多了」。</p>
+
+    <div class="finance-block finance-heatmap">
+      <div class="fb-head">
+        <span class="fb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span>
+        <span class="fb-title">支出热力图</span>
+        <span class="fb-pill">近 12 周</span>
+      </div>
+
+      <div class="hm-cap">单位：元 · 悬停查看明细</div>
+      <table class="hm-table">
+        <thead>
+          <tr><th></th><th>5/5</th><th>5/12</th><th>5/19</th><th>5/26</th><th>6/2</th><th>6/9</th><th>6/16</th><th>6/23</th><th>6/30</th><th>7/7</th><th>7/14</th><th>7/21</th></tr>
+        </thead>
+        <tbody>
+          <tr><th>餐饮</th>
+            <td style="background:rgba(47,168,106,.15)">320</td><td style="background:rgba(47,168,106,.30)">680</td><td style="background:rgba(47,168,106,.10)">210</td><td style="background:rgba(47,168,106,.22)">480</td><td style="background:rgba(47,168,106,.40)">920</td><td style="background:rgba(47,168,106,.18)">410</td><td style="background:rgba(47,168,106,.55)">1240</td><td style="background:rgba(47,168,106,.12)">260</td><td style="background:rgba(47,168,106,.28)">640</td><td style="background:rgba(47,168,106,.20)">440</td><td style="background:rgba(47,168,106,.35)">820</td><td style="background:rgba(47,168,106,.25)">560</td>
+          </tr>
+          <tr><th>居住</th>
+            <td style="background:rgba(47,168,106,.45)">4200</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.45)">4200</td>
+          </tr>
+          <tr><th>交通</th>
+            <td style="background:rgba(47,168,106,.12)">60</td><td style="background:rgba(47,168,106,.12)">60</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.12)">60</td><td style="background:rgba(47,168,106,.12)">60</td><td style="background:rgba(47,168,106,.18)">120</td><td style="background:rgba(47,168,106,.12)">60</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.12)">60</td><td style="background:rgba(47,168,106,.18)">120</td><td style="background:rgba(47,168,106,.12)">60</td><td style="background:rgba(47,168,106,.12)">60</td>
+          </tr>
+          <tr><th>购物</th>
+            <td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.20)">440</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.65)">6310</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.15)">320</td><td style="background:rgba(47,168,106,.08)">0</td><td style="background:rgba(47,168,106,.12)">60</td><td style="background:rgba(47,168,106,.25)">560</td><td style="background:rgba(47,168,106,.10)">210</td><td style="background:rgba(47,168,106,.18)">410</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="hm-legend">
+        <span>低</span><span class="bar"></span><span>高</span>
+        <span style="margin-left:auto;color:var(--text-faint)">绿色越深 = 支出越高</span>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const toggle=document.getElementById('toggle');
+  toggle.addEventListener('click',()=>{ const dark=document.body.classList.toggle('theme-dark'); toggle.textContent=dark?'切换浅色':'切换深色'; });
+</script>
+</body>
+</html>

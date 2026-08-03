@@ -38,7 +38,7 @@ describe('appendEntryToLedgerBlock', () => {
     const res = await appendEntryToLedgerBlock(
       app as any,
       '账本/2026-07.md',
-      '2026-07-29 * 午餐\n  现金 -3500\n  费用:餐饮 3500',
+      '2026-07-29 * 午餐\n  现金 -3500\n  餐饮 3500',
       '^t-20260729120000',
     );
 
@@ -55,14 +55,14 @@ describe('appendEntryToLedgerBlock', () => {
     const existing =
       '# 2026-07\n\n' +
       '```fin-beancount\n' +
-      '2026-07-28 * 早餐\n  现金 -1500\n  费用:餐饮 1500\n^t-20260728080000\n' +
+      '2026-07-28 * 早餐\n  现金 -1500\n  餐饮 1500\n^t-20260728080000\n' +
       '```\n';
     const app = makeApp({ '账本/2026-07.md': existing });
 
     const res = await appendEntryToLedgerBlock(
       app as any,
       '账本/2026-07.md',
-      '2026-07-29 * 午餐\n  现金 -3500\n  费用:餐饮 3500',
+      '2026-07-29 * 午餐\n  现金 -3500\n  餐饮 3500',
       '^t-20260729120000',
     );
 
@@ -85,7 +85,7 @@ describe('appendEntryToLedgerBlock', () => {
     const res = await appendEntryToLedgerBlock(
       app as any,
       '2026-07.md',
-      '2026-07-29 * 咖啡\n  现金 -2000\n  费用:餐饮 2000',
+      '2026-07-29 * 咖啡\n  现金 -2000\n  餐饮 2000',
       't-20260729120000',
     );
     expect(res.success).toBe(true);
@@ -97,7 +97,7 @@ describe('appendEntryToLedgerBlock', () => {
     const res = await appendEntryToLedgerBlock(
       app as any,
       '账本/2026-07.md',
-      '2026-07-29 * 午餐\n  现金 -3500\n  费用:餐饮 3500',
+      '2026-07-29 * 午餐\n  现金 -3500\n  餐饮 3500',
       '^t-20260729120000',
     );
     expect(res.success).toBe(true);
@@ -110,7 +110,7 @@ describe('appendEntryToLedgerBlock', () => {
     const existing =
       '# 2026-07\n\n' +
       '```fin-beancount\n' +
-      '2026-07-28 * 早餐\n  现金 -1500\n  费用:餐饮 1500\n^t-20260728080000\n' +
+      '2026-07-28 * 早餐\n  现金 -1500\n  餐饮 1500\n^t-20260728080000\n' +
       '```\n';
     const app = makeApp({ '账本/2026-07.md': existing });
 
@@ -118,14 +118,14 @@ describe('appendEntryToLedgerBlock', () => {
     await appendEntryToLedgerBlock(
       app as any,
       '账本/2026-07.md',
-      '2026-07-29 * 午餐\n  现金 -3500\n  费用:餐饮 3500',
+      '2026-07-29 * 午餐\n  现金 -3500\n  餐饮 3500',
       '^t-20260729120000',
     );
     // 追加第 3 笔（最后一条）
     await appendEntryToLedgerBlock(
       app as any,
       '账本/2026-07.md',
-      '2026-07-30 * 晚餐\n  现金 -2000\n  费用:餐饮 2000',
+      '2026-07-30 * 晚餐\n  现金 -2000\n  餐饮 2000',
       '^t-20260730190000',
     );
 

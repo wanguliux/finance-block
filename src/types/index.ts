@@ -42,6 +42,7 @@ export interface Valuation {
   amount: AmountInCents; // 该账户在该日期的公允市值全量（分）
   currency?: string;     // 币种后缀，缺省 = 基准币种
   comment?: string;      // 行内注释（如 "约 350 股，按收盘价"）
+  blockRef?: string;     // 入账后附加的块引用行（^v-YYYYMMDDHHmmss）；草稿态无
 }
 
 // ─── 配置子结构 ───────────────────────────────────────────────
@@ -134,6 +135,76 @@ export interface LifeEventDef {
 
 // ─── 插件配置（finance-config.json，存于 vault 内） ─────────────
 
+// ── 日常花费计划（finance-recurring，V1） ──────────────────────
+
+export type RecurringFrequency = 'daily' | 'weekday' | 'monthly';
+
+/**
+ * 日常花费计划：高频、规律、低变动的固定支出（地铁通勤 / 订阅 / 会员）。
+ * 存于 finance-config.json 的 recurringPlans[]；每期金额固定、两腿（支出账户 + 出资账户）。
+ */
+export interface RecurringPlanDef {
+  id: string; // 唯一标识（创建时生成，编辑时只读；入账分录以 plan: <id> 元数据标记）
+  name: string; // 计划名（全局唯一）
+  amount: AmountInCents; // 每期金额（分）
+  account: string; // 支出账户（腿 1，必填）
+  fromAccount: string; // 出资账户（腿 2，必填）
+  txnType: string; // 分类标签（transactionTypes 词表）
+  owner: string; // 归属（缺省 defaultOwner）
+  frequency: RecurringFrequency; // daily | weekday | monthly
+  monthlyDay?: number; // frequency=monthly 时生效（1–28）
+  startDate: string; // 起始日 YYYY-MM-DD
+  endDate?: string; // 结束日（可选，留空=长期有效）
+  note?: string;
+  active: boolean; // 软删/暂停标记（false = 不派生草稿）
+}
+
+/** 日常计划跳过记录：{ planId: ['2026-08-03'] }（键=应发生日） */
+export type RecurringSkips = Record<string, string[]>;
+
+// ── 贷款计划（finance-recurring，V2） ──────────────────────────
+
+export type LoanType = 'annuity' | 'equal-principal' | 'interest-first';
+export type LoanFrequency = 'monthly' | 'quarterly';
+
+/**
+ * 贷款计划：房贷/车贷等「先负债、逐期偿还」的分期还款。
+ * 存于 finance-config.json 的 loanPlans[]；每期 3 腿（出资资产 / 负债 / 利息费用），
+ * 金额与本金利息拆分由还款引擎（engine/loan.ts）按 schedule 生成，非固定金额。
+ */
+export interface LoanDef {
+  id: string; // 唯一标识（入账分录以 loan: <id> 元数据标记）
+  name: string;
+  type: LoanType; // annuity 等额本息 | equal-principal 等额本金 | interest-first 先息后本
+  principal: AmountInCents; // 贷款本金（分）
+  annualRate: number; // 年利率 %
+  termYears: number; // 年限（1–50）
+  frequency: LoanFrequency; // 还款周期
+  firstPaymentDate: string; // 首期还款日 YYYY-MM-DD
+  assetAccount: string; // 出资账户（asset，每期 -total）
+  liabilityAccount: string; // 负债账户（liability，每期 +principalPart）
+  interestAccount: string; // 利息费用账户（expense，每期 +interestPart）
+  txnType: string; // 分类标签
+  owner: string;
+  note?: string;
+  active: boolean; // 软删/暂停标记
+  /**
+   * 编辑贷款时显式设定的「当前剩余本金」（= 模拟部分提前还本，已拍板入口）。
+   * 缺省 = principal；续算 schedule 与「我的贷款」剩余本金展示均以本字段为基准。
+   */
+  remainingPrincipal?: AmountInCents;
+}
+
+/** 还款计划中的一期（引擎计算产物） */
+export interface LoanPeriod {
+  period: number; // 1-based 期号（入账分录以 loan-period: <N> 元数据标记）
+  date: string; // 应还日 YYYY-MM-DD
+  total: AmountInCents; // 本期总额（= 本金 + 利息）
+  principalPart: AmountInCents; // 本期本金
+  interestPart: AmountInCents; // 本期利息
+  remainingBalance: AmountInCents; // 本期还清后的剩余本金
+}
+
 export interface FinanceConfig {
   version: number; // schema 版本号，用于未来迁移
   accounts: AccountDef[]; // 账户列表（中文本土预设六类）
@@ -145,6 +216,9 @@ export interface FinanceConfig {
   transactionTypes: TransactionTypeDef[]; // 可配置交易类型
   budgets: BudgetDef[]; // 预算计划列表（按交易类型设定支出上限，驱动预算视图）
   lifeEvents: LifeEventDef[]; // 人生事件列表（买房/生娃等，驱动现金流模拟器的事件层与计算）
+  recurringPlans: RecurringPlanDef[]; // 日常花费计划（finance-recurring V1）
+  recurringSkips: RecurringSkips; // 日常计划跳过记录（按应发生日）
+  loanPlans: LoanDef[]; // 贷款计划（finance-recurring V2）
   fiCalc: FICalcConfig; // 财务自由计算器参数
   defaultStaleDays: number; // 估值过期全局默认阈值（天），仅 market/depreciation 账户生效；账户级 staleDays 优先
 }

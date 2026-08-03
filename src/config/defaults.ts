@@ -5,7 +5,7 @@ import type { FinanceConfig } from '../types';
  * 首次使用时写入 vault 的 finance-config.json。
  */
 export const DEFAULT_CONFIG: FinanceConfig = {
-  version: 4,
+  version: 5,
 
   // ── 账户：每类一个，owner 默认「自己」，valuation / cashflowRole 按通常语义预填 ──
   accounts: [
@@ -63,6 +63,13 @@ export const DEFAULT_CONFIG: FinanceConfig = {
   lifeEvents: [
     { id: 'retire', label: '退休', type: 'retire', age: 60, enabled: true },
   ],
+
+  // 日常花费计划（finance-recurring V1）—— 种子为空，用户在代码块里新建
+  recurringPlans: [],
+  recurringSkips: {},
+
+  // 贷款计划（finance-recurring V2）—— 种子为空
+  loanPlans: [],
 
   // 现金流模拟器默认参数
   fiCalc: {

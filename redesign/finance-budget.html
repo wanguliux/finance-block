@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Finance Block · finance-budget 预算执行原型</title>
+<style>
+  :root {
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+    --fb-accent: #7c5cff; --fb-accent-strong: #6a48f5; --fb-accent-soft: rgba(124, 92, 255, 0.12);
+    --fb-green: #2fa86a; --fb-green-soft: rgba(47, 168, 106, 0.12);
+    --fb-amber: #e0922f; --fb-amber-soft: rgba(224, 146, 47, 0.12);
+    --fb-red: #e5484d; --fb-red-soft: rgba(229, 72, 77, 0.12);
+    --fb-radius: 12px; --fb-radius-sm: 8px; --fb-radius-pill: 999px;
+    --background-primary: #ffffff; --background-primary-alt: #f6f7f9; --background-secondary: #f1f2f4;
+    --text-normal: #2b2b33; --text-muted: #6b6f76; --text-faint: #9a9ea6;
+    --fb-border: rgba(15, 18, 25, 0.10);
+    --fb-shadow: 0 1px 2px rgba(15, 18, 25, 0.04), 0 6px 20px rgba(15, 18, 25, 0.06);
+    --fb-shadow-hover: 0 2px 8px rgba(15, 18, 25, 0.06), 0 12px 32px rgba(15, 18, 25, 0.10);
+    --fb-track: rgba(15, 18, 25, 0.08); --fb-row-hover: rgba(15, 18, 25, 0.03); --canvas: #eef0f3;
+  }
+  .theme-dark {
+    --background-primary: #1e1f24; --background-primary-alt: #25262c; --background-secondary: #2a2b32;
+    --text-normal: #e4e4e8; --text-muted: #a0a3ab; --text-faint: #71747d;
+    --fb-border: rgba(255, 255, 255, 0.10);
+    --fb-shadow: 0 1px 2px rgba(0, 0, 0, 0.30), 0 6px 22px rgba(0, 0, 0, 0.35);
+    --fb-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.35), 0 14px 34px rgba(0, 0, 0, 0.45);
+    --fb-track: rgba(255, 255, 255, 0.10); --fb-row-hover: rgba(255, 255, 255, 0.04); --canvas: #16171b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: var(--font-ui); background: var(--canvas); color: var(--text-normal); -webkit-font-smoothing: antialiased; transition: background .3s ease, color .3s ease; }
+  .proto-bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; padding: 12px 22px; background: color-mix(in srgb, var(--background-primary) 86%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--fb-border); }
+  .proto-bar h1 { font-size: 14px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  .proto-bar .sub { font-size: 12px; color: var(--text-faint); margin-left: 8px; font-weight: 400; }
+  .theme-toggle { font: inherit; font-size: 12.5px; font-weight: 500; padding: 6px 14px; border-radius: var(--fb-radius-pill); border: 1px solid var(--fb-border); background: var(--background-primary); color: var(--text-normal); cursor: pointer; transition: .15s; }
+  .theme-toggle:hover { border-color: var(--fb-accent); color: var(--fb-accent); }
+  .reading { max-width: 820px; margin: 0 auto; padding: 40px 24px 80px; }
+  .reading > .doc-h { font-size: 26px; font-weight: 700; margin: 0 0 6px; }
+  .reading > .doc-sub { font-size: 13px; color: var(--text-muted); margin: 0 0 24px; line-height: 1.7; }
+
+  .finance-block { border: 1px solid var(--fb-border); border-radius: var(--fb-radius); padding: 14px 16px; margin: 16px 0; background: var(--background-primary); box-shadow: var(--fb-shadow); font-size: 14px; line-height: 1.5; transition: box-shadow .2s ease; }
+  .finance-block:hover { box-shadow: var(--fb-shadow-hover); }
+  .fb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .fb-icon { width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: grid; place-items: center; background: var(--fb-accent-soft); color: var(--fb-accent); }
+  .fb-icon svg { width: 16px; height: 16px; }
+  .fb-title { flex: 1; font-size: 14px; font-weight: 600; letter-spacing: .01em; }
+  .fb-pill { font-size: 12px; font-weight: 500; color: var(--text-muted); background: var(--background-secondary); border: 1px solid var(--fb-border); padding: 3px 11px; border-radius: var(--fb-radius-pill); white-space: nowrap; }
+  .fb-pill.is-accent { color: var(--fb-accent); background: var(--fb-accent-soft); border-color: transparent; }
+
+  .bd-period { font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px; }
+  .bd-list { display: flex; flex-direction: column; gap: 14px; }
+  .bd-item-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; gap: 10px; }
+  .bd-cat { font-size: 13.5px; font-weight: 600; }
+  .bd-right { display: flex; align-items: baseline; gap: 10px; flex-shrink: 0; }
+  .bd-amt { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-muted); }
+  .bd-pct { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .bd-pct.warn { color: var(--fb-amber); }
+  .bd-pct.over { color: var(--fb-red); }
+  .bd-track { height: 10px; border-radius: 999px; background: var(--fb-track); overflow: hidden; }
+  .bd-fill { height: 100%; border-radius: 999px; transition: width .3s ease; }
+  .bd-fill.ok { background: linear-gradient(90deg, var(--fb-green), #3fbf7d); }
+  .bd-fill.warn { background: linear-gradient(90deg, var(--fb-amber), #f0a94a); }
+  .bd-fill.over { background: linear-gradient(90deg, var(--fb-red), #f06a6e); }
+  .bd-foot { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--fb-border); font-variant-numeric: tabular-nums; }
+  .bd-foot b { font-family: var(--font-mono); }
+  .bd-foot b.neg { color: var(--fb-red); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+  <div class="proto-bar">
+    <div><h1>Finance Block</h1><span class="sub">finance-budget · 预算执行率原型</span></div>
+    <button class="theme-toggle" id="toggle">切换深色</button>
+  </div>
+
+  <div class="reading">
+    <h1 class="doc-h">finance-budget · 预算执行</h1>
+    <p class="doc-sub">按分类展示预算执行进度：已用 / 预算、执行率、进度条（安全 / 接近 / 超支三色）。</p>
+
+    <div class="finance-block finance-budget">
+      <div class="fb-head">
+        <span class="fb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M12 3v9h9"/></svg></span>
+        <span class="fb-title">预算执行</span>
+        <span class="fb-pill">本月</span>
+      </div>
+
+      <div class="bd-period">本月：2026-07-01 ~ 2026-07-31</div>
+
+      <div class="bd-list">
+        <div class="bd-item">
+          <div class="bd-item-head"><span class="bd-cat">餐饮</span><span class="bd-right"><span class="bd-amt">¥1,240 / ¥5,000</span><span class="bd-pct">24.8%</span></span></div>
+          <div class="bd-track"><div class="bd-fill ok" style="width:24.8%"></div></div>
+        </div>
+        <div class="bd-item">
+          <div class="bd-item-head"><span class="bd-cat">居住</span><span class="bd-right"><span class="bd-amt">¥4,200 / ¥5,000</span><span class="bd-pct warn">84.0%</span></span></div>
+          <div class="bd-track"><div class="bd-fill warn" style="width:84%"></div></div>
+        </div>
+        <div class="bd-item">
+          <div class="bd-item-head"><span class="bd-cat">购物</span><span class="bd-right"><span class="bd-amt">¥6,310 / ¥5,000</span><span class="bd-pct over">126.2%</span></span></div>
+          <div class="bd-track"><div class="bd-fill over" style="width:100%"></div></div>
+        </div>
+        <div class="bd-item">
+          <div class="bd-item-head"><span class="bd-cat">交通</span><span class="bd-right"><span class="bd-amt">¥380 / ¥2,000</span><span class="bd-pct">19.0%</span></span></div>
+          <div class="bd-track"><div class="bd-fill ok" style="width:19%"></div></div>
+        </div>
+      </div>
+
+      <div class="bd-foot">
+        <span>合计已用 <b>¥12,130</b> / 预算 <b>¥17,000</b></span>
+        <span>剩余 <b class="neg">¥4,870</b></span>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const toggle=document.getElementById('toggle');
+  toggle.addEventListener('click',()=>{ const dark=document.body.classList.toggle('theme-dark'); toggle.textContent=dark?'切换浅色':'切换深色'; });
+</script>
+</body>
+</html>

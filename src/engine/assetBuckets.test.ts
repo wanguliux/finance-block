@@ -22,6 +22,9 @@ function makeConfig(accounts: AccountDef[], valuations: Valuation[]): {
     lifeEvents: [],
     fiCalc: { defaultRate: 4 },
     defaultStaleDays: 30,
+    recurringPlans: [],
+    recurringSkips: {},
+    loanPlans: [],
   };
   return { config, valuations };
 }
@@ -35,16 +38,16 @@ describe('bucketAssets 资产现金流分桶', () => {
   it('growth/cash/fixed/liability 四类正确分桶，净资产 = 生息本金 + 非生息 − 负债', () => {
     const { config, valuations } = makeConfig(
       [
-        { name: '资产:股票', class: 'asset', valuation: 'market', cashflowRole: 'growth' },
-        { name: '资产:存款', class: 'asset', valuation: 'book', cashflowRole: 'cash' },
-        { name: '资产:车', class: 'asset', valuation: 'book', cashflowRole: 'fixed' },
-        { name: '负债:房贷', class: 'liability' },
+        { name: '股票', class: 'asset', valuation: 'market', cashflowRole: 'growth' },
+        { name: '存款', class: 'asset', valuation: 'book', cashflowRole: 'cash' },
+        { name: '车', class: 'asset', valuation: 'book', cashflowRole: 'fixed' },
+        { name: '房贷', class: 'liability' },
       ],
-      [{ date: '2026-07-01', account: '资产:股票', amount: 120 * W, currency: 'CNY' }],
+      [{ date: '2026-07-01', account: '股票', amount: 120 * W, currency: 'CNY' }],
     );
     const r = bucketAssets(
       config,
-      balances({ '资产:股票': 100 * W, '资产:存款': 30 * W, '资产:车': 20 * W, '负债:房贷': -50 * W }),
+      balances({ '股票': 100 * W, '存款': 30 * W, '车': 20 * W, '房贷': -50 * W }),
       valuations,
     );
     expect(r.growthValue).toBe(120 * W); // 市值口径（手动估值覆盖账面）
@@ -60,14 +63,14 @@ describe('bucketAssets 资产现金流分桶', () => {
   it('应急金缓冲 = 年支出 × 月数 / 12，并从现金桶扣减后再并入生息本金', () => {
     const { config, valuations } = makeConfig(
       [
-        { name: '资产:股票', class: 'asset', valuation: 'market', cashflowRole: 'growth' },
-        { name: '资产:存款', class: 'asset', valuation: 'book', cashflowRole: 'cash' },
+        { name: '股票', class: 'asset', valuation: 'market', cashflowRole: 'growth' },
+        { name: '存款', class: 'asset', valuation: 'book', cashflowRole: 'cash' },
       ],
-      [{ date: '2026-07-01', account: '资产:股票', amount: 120 * W, currency: 'CNY' }],
+      [{ date: '2026-07-01', account: '股票', amount: 120 * W, currency: 'CNY' }],
     );
     const r = bucketAssets(
       config,
-      balances({ '资产:股票': 100 * W, '资产:存款': 30 * W }),
+      balances({ '股票': 100 * W, '存款': 30 * W }),
       valuations,
       undefined,
       { annualSpend: 4 * W, bufferMonths: 6 },
@@ -106,8 +109,8 @@ describe('bucketAssets 资产现金流分桶', () => {
   });
 
   it('无资产账户 → 全部桶为 0，净资产为 0（纯手填退化路径）', () => {
-    const { config } = makeConfig([{ name: '负债:卡债', class: 'liability' }], []);
-    const r = bucketAssets(config, balances({ '负债:卡债': -5 * W }), []);
+    const { config } = makeConfig([{ name: '卡债', class: 'liability' }], []);
+    const r = bucketAssets(config, balances({ '卡债': -5 * W }), []);
     expect(r.interestPrincipal).toBe(0);
     expect(r.growthValue).toBe(0);
     expect(r.cashValue).toBe(0);

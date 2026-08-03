@@ -41,6 +41,7 @@ export interface BlockDefinitionWithParams {
   description?: string; // 说明（i18n 翻译后）
   icon?: string; // Obsidian 图标名
   template?: string; // 原始模板（含 {{key}} 占位）——有 template 时用模板替换模式生成代码块
+  multiLeg?: boolean; // 复式分录块：录入为 N 腿动态结构（type:'legs' 参数驱动），文本由 buildCodeBlock 动态生成
   params: ParamDef[]; // 参数定义
   /** 所属插件 ID，用于跨插件 Modal 的 Tab 分组（契约要求） */
   pluginId?: string;

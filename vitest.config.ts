@@ -14,6 +14,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    // Windows 下 threads pool 在测试文件较多时偶发
+    // "options.minThreads and options.maxThreads must not conflict" 崩溃（无输出退出 1），
+    // 改用 forks pool 规避（本仓库测试为纯内存 jsdom，无共享状态依赖）。
+    pool: 'forks',
   },
   resolve: {
     alias: {

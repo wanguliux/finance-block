@@ -43,8 +43,11 @@ export async function appendEntryToLedgerBlock(
   blockRefId: string,
 ): Promise<AppendResult> {
   const adapter = app.vault.adapter;
-  // 归一化块引用 ID：无论入参是 ^t-xxx / t-xxx / xxx，统一规整为 ^t-xxx
-  const refId = `^t-${blockRefId.replace(/^\^?t-/, '')}`;
+  // 归一化块引用 ID：保留 t / v 前缀语义（t=交易，v=估值）。
+  // 无论入参是 ^t-xxx / t-xxx / ^v-xxx / v-xxx / xxx，统一规整为 ^<t|v>-xxx。
+  const kindMatch = /^\^?([tv])-/.exec(blockRefId);
+  const kind = kindMatch ? kindMatch[1] : 't';
+  const refId = `^${kind}-${blockRefId.replace(/^\^?[tv]-/, '')}`;
   const entryText = `${entryBody}\n${refId}`; // 块内新分录（不含围栏）
 
   // 账本文件所在文件夹（用于确保目录存在）

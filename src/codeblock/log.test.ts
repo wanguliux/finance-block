@@ -174,7 +174,7 @@ describe('filterEntries · 属性筛选', () => {
   const data = [
     entry({ date: TODAY, amount: -35, from: '现金', type: '餐饮', owner: '自己' }),
     entry({ date: TODAY, amount: -150, from: '银行卡', type: '购物', owner: '家庭' }),
-    entry({ date: TODAY, amount: 8000, from: '收入:工资', to: '银行卡', type: '工资', owner: '自己' }),
+    entry({ date: TODAY, amount: 8000, from: '工资', to: '银行卡', type: '工资', owner: '自己' }),
   ];
 
   it('amount 按绝对值筛选，收入支出一视同仁', () => {

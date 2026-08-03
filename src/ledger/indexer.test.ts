@@ -69,19 +69,19 @@ const LEDGER_CONTENT = [
   '```fin-beancount',
   '2026-07-30 * 下午茶',
   '  支付宝 -1500',
-  '  费用:餐饮 1500',
+  '  餐饮 1500',
   '  type: 餐饮',
   '^t-202607300001',
   '',
   '2026-07-30 * 入账工资',
   '  银行卡 400',
-  '  收入:工资 -400',
+  '  工资 -400',
   '  type: 工资',
   '^t-202607300002',
   '',
   '2026-07-30 * 打车',
   '  支付宝 -300',
-  '  费用:交通 300',
+  '  交通 300',
   '  type: 交通',
   '^t-202607300003',
   '```',
@@ -168,7 +168,7 @@ describe('Indexer 纯内存化（不再落盘 finance-index.json）', () => {
     const files = new Map<string, { content: string; mtime: number }>();
     files.set('账本/账本.md', { content: LEDGER_CONTENT, mtime: 1000 });
     files.set('日记/2026-07-30.md', {
-      content: ['```fin-beancount', '2026-07-30 * 咖啡', '  现金 -30', '  费用:餐饮 30', '```'].join(
+      content: ['```fin-beancount', '2026-07-30 * 咖啡', '  现金 -30', '  餐饮 30', '```'].join(
         '\n'
       ),
       mtime: 1000,
@@ -190,10 +190,10 @@ describe('Indexer 纯内存化（不再落盘 finance-index.json）', () => {
 });
 
 describe('Indexer 待入账筛查（范围过滤）', () => {
-  const DRAFT_IN_SCOPE = ['```fin-beancount', '2026-07-30 * 咖啡', '  现金 -30', '  费用:餐饮 30', '```'].join(
+  const DRAFT_IN_SCOPE = ['```fin-beancount', '2026-07-30 * 咖啡', '  现金 -30', '  餐饮 30', '```'].join(
     '\n'
   );
-  const DRAFT_OUT_SCOPE = ['```fin-beancount', '2026-07-30 * 电影', '  现金 -80', '  费用:娱乐 80', '```'].join(
+  const DRAFT_OUT_SCOPE = ['```fin-beancount', '2026-07-30 * 电影', '  现金 -80', '  娱乐 80', '```'].join(
     '\n'
   );
 

@@ -13,12 +13,16 @@ import { renderLog } from './log';
 import { renderBudget } from './budget';
 import { renderHeatmap } from './heatmap';
 import { renderAssets } from './assets';
-import { postTransaction, batchPostTransactions } from '../ledger/poster';
+import { renderRecurring } from './recurring';
+import { postTransactionsInBlock, splitEntries } from '../ledger/poster';
+import { calculateBalances } from '../ledger/closing';
+import { localDateString } from '../util/date';
 import { Indexer } from '../ledger/indexer';
 import { t } from '../i18n';
 import {
   addDays,
   computeLedgerSummary,
+  dirOfPost,
   fmtCents,
   fmtMD,
   ledgerDisplayName,
@@ -26,8 +30,9 @@ import {
   weekStart,
 } from '../util/ledgerView';
 import { copyText } from '../util/clipboard';
+import { auditTransaction, type TxnWarning } from '../engine/audit';
 import { BLOCK_ICONS, ICON_COPY, ICON_CHECK, ICON_ARROW, ICON_CARET, setSvg } from './icons';
-import type { FinanceConfig, Transaction } from '../types';
+import type { FinanceConfig, Transaction, Valuation, AccountDef, AmountInCents, LoanDef, LoanPeriod, RecurringPlanDef } from '../types';
 import { AppendDraftToBlockModal } from '../ui/AppendDraftToBlockModal';
 import type { BlockDefinitionWithParams } from '../blockProvider';
 
@@ -48,6 +53,16 @@ export interface ProcessorDeps {
   openRecordModal: () => void; // 打开「记一笔」弹窗（侧栏 ribbon / 命令面板入口使用）
   openValuationModal: (account?: string) => void; // 打开「更新估值」弹窗（资产总览卡片按钮触发）
   openLifeEventModal: (onChanged?: () => void) => void; // 打开「人生事件」弹窗（现金流模拟器事件层入口）；onChanged 在事件变更后回调，用于重算刷新
+  // ── finance-recurring（日常花费 + 贷款） ──
+  postRecurringEntry: (plan: RecurringPlanDef, date: string, amountCents: AmountInCents) => Promise<void>; // 日常草稿入账（写账本 + 刷新索引）
+  skipRecurringEntry: (planId: string, date: string) => Promise<void>; // 日常草稿跳过（写 recurringSkips）
+  postLoanEntry: (loan: LoanDef, period: LoanPeriod) => Promise<void>; // 贷款期入账（3 腿写账本 + 刷新索引）
+  saveRecurringPlan: (plan: RecurringPlanDef) => Promise<void>; // 新建/更新日常计划（含暂停/启用）
+  removeRecurringPlan: (planId: string) => Promise<void>; // 删除日常计划
+  saveLoan: (loan: LoanDef) => Promise<void>; // 新建/更新贷款（含暂停/启用）
+  removeLoan: (loanId: string) => Promise<void>; // 删除贷款
+  openRecurringPlanModal: (plan?: RecurringPlanDef, onChanged?: () => void) => void; // 打开日常计划弹窗
+  openLoanModal: (loan?: LoanDef, onChanged?: () => void) => void; // 打开贷款弹窗
 }
 
 // ─── 已渲染代码块登记表（切语言时整体重渲染） ─────────────
@@ -101,13 +116,14 @@ export function createProcessors(deps: ProcessorDeps): CodeBlockProcessor[] {
           deps.openRolloverModal,
           deps.getBlockDefinitions,
           deps.getFinanceConfig,
+          deps.openValuationModal,
         ),
     },
 
     // ── 视图层：finance-log 流水
     {
       language: 'finance-log',
-      render: (source, el, ctx) => renderLog(source, el, ctx, deps.app, deps.indexer, deps.getLedgerPath()),
+      render: (source, el, ctx) => renderLog(source, el, ctx, deps.app, deps.indexer, deps.getLedgerPath(), deps.getFinanceConfig()),
     },
 
     // ── 视图层：finance-ficalc 现金流模拟器（已并入原 finance-fi 的账本派生能力 + 阶段三人生事件）
@@ -140,6 +156,25 @@ export function createProcessors(deps: ProcessorDeps): CodeBlockProcessor[] {
         deps.getLedgerPath(), deps.app, deps.openValuationModal,
       ),
     },
+
+    // ── 视图层：finance-recurring 日常花费 + 贷款（V1 + V2）
+    {
+      language: 'finance-recurring',
+      render: (source, el, ctx) => renderRecurring(source, el, ctx, {
+        app: deps.app,
+        getFinanceConfig: deps.getFinanceConfig,
+        indexer: deps.indexer,
+        postRecurringEntry: deps.postRecurringEntry,
+        skipRecurringEntry: deps.skipRecurringEntry,
+        postLoanEntry: deps.postLoanEntry,
+        saveRecurringPlan: deps.saveRecurringPlan,
+        removeRecurringPlan: deps.removeRecurringPlan,
+        saveLoan: deps.saveLoan,
+        removeLoan: deps.removeLoan,
+        openRecurringPlanModal: deps.openRecurringPlanModal,
+        openLoanModal: deps.openLoanModal,
+      }),
+    },
   ];
 
   processorsByLang.clear();
@@ -167,6 +202,342 @@ export function createProcessors(deps: ProcessorDeps): CodeBlockProcessor[] {
 
 // ─── fin-beancount 源码渲染 ────────────────────────────────────
 
+type ValGroupMode = 'flat' | 'account' | 'month';
+
+interface ValRenderCtx {
+  config: FinanceConfig | undefined;
+  todayStr: string;
+  allVals: Valuation[];
+  balances: Map<string, AmountInCents>;
+}
+
+function daysBetween(a: string, b: string): number {
+  const da = new Date(a + 'T00:00:00');
+  const db = new Date(b + 'T00:00:00');
+  return Math.round((db.getTime() - da.getTime()) / 86400000);
+}
+
+function fmtYuan(cents: number): string {
+  return '¥' + (cents / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function accountDefOf(config: FinanceConfig | undefined, name: string): AccountDef | undefined {
+  return config?.accounts.find((a) => a.name === name);
+}
+
+function valSeries(account: string, allVals: Valuation[], extra?: Valuation): Valuation[] {
+  const arr = allVals.filter((v) => v.account === account);
+  if (extra) arr.push(extra);
+  return arr.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+function buildSpark(account: string, allVals: Valuation[], extra?: Valuation): string {
+  const pts = valSeries(account, allVals, extra).map((v) => v.amount);
+  if (pts.length < 2) return '';
+  const w = 64;
+  const h = 20;
+  const min = Math.min(...pts);
+  const max = Math.max(...pts);
+  const span = max - min || 1;
+  const d = pts
+    .map((p, i) => {
+      const x = (i / (pts.length - 1)) * w;
+      const y = h - ((p - min) / span) * (h - 4) - 2;
+      return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1);
+    })
+    .join(' ');
+  const dir = pts[pts.length - 1] >= pts[0] ? 'up' : 'down';
+  return `<svg class="bc-val-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><path class="spark-line ${dir}" d="${d}"/></svg>`;
+}
+
+function appendSectionLabel(parent: HTMLElement, label: string, isVal: boolean): void {
+  const el = parent.createDiv({ cls: `bc-section-label ${isVal ? 'is-val' : ''}`.trim() });
+  el.createSpan({ cls: 'dot' });
+  el.createSpan({ text: label });
+}
+
+/** 计算所有「过期」账户（基于账本内最新一条估值的日期，相对今天） */
+function computeStaleAccounts(ctx: ValRenderCtx): { account: string; gap: number; threshold: number }[] {
+  const byAccount = new Map<string, Valuation[]>();
+  for (const v of ctx.allVals) {
+    if (!byAccount.has(v.account)) byAccount.set(v.account, []);
+    byAccount.get(v.account)!.push(v);
+  }
+  const res: { account: string; gap: number; threshold: number }[] = [];
+  for (const [account, arr] of byAccount) {
+    const latest = arr.reduce((m, v) => (v.date > m.date ? v : m), arr[0]);
+    const accDef = accountDefOf(ctx.config, account);
+    if (!accDef) continue;
+    const vType = accDef.valuation ?? 'book';
+    if (vType === 'book') continue;
+    const staleDays = accDef.staleDays ?? ctx.config?.defaultStaleDays ?? 0;
+    if (staleDays <= 0) continue;
+    const gap = daysBetween(latest.date, ctx.todayStr);
+    if (gap > staleDays) res.push({ account, gap, threshold: staleDays });
+  }
+  return res;
+}
+
+/** 单张估值卡片（草案 / 已入账复用同一结构） */
+function renderValCard(parent: HTMLElement, val: Valuation, ctx: ValRenderCtx, opts: { isPosted: boolean; onPost?: () => void }): void {
+  const accDef = accountDefOf(ctx.config, val.account);
+  const isKnown = !!accDef;
+  const vType = accDef?.valuation ?? 'book';
+  const staleDays = accDef ? (accDef.staleDays ?? ctx.config?.defaultStaleDays ?? 0) : 0;
+  const icon = accDef?.icon ?? '❓';
+
+  const postedOfAccount = ctx.allVals.filter((v) => v.account === val.account);
+  const prev = postedOfAccount
+    .filter((v) => v.date < val.date)
+    .reduce<Valuation | undefined>((m, v) => (!m || v.date > m.date ? v : m), undefined);
+  const latestPosted = postedOfAccount.reduce<Valuation | undefined>(
+    (m, v) => (!m || v.date > m.date ? v : m),
+    undefined,
+  );
+  const isLatest = val.blockRef ? !latestPosted || val.date >= latestPosted.date : val.date >= (latestPosted?.date ?? val.date);
+  const staleRef = val.blockRef ? val.date : prev?.date ?? val.date;
+  const gap = daysBetween(staleRef, ctx.todayStr);
+  const isStale = isKnown && vType !== 'book' && staleDays > 0 && gap > staleDays;
+  const sameDayExists = postedOfAccount.some((v) => v.date === val.date && v.blockRef !== val.blockRef);
+
+  const kindLabel = !isKnown
+    ? t('valuation.kind.unknown')
+    : vType === 'market'
+      ? t('valuation.kind.market')
+      : vType === 'depreciation'
+        ? t('valuation.kind.depreciation')
+        : t('valuation.kind.book');
+  const kindCls = !isKnown || vType === 'book' ? 'book' : vType === 'depreciation' ? 'dep' : '';
+
+  // 变化（vs 上一条估值）
+  let deltaHtml = `<span class="bc-val-delta flat">${t('valuation.noHistory')}</span>`;
+  let vsHtml = '';
+  if (prev) {
+    const d = val.amount - prev.amount;
+    const pct = prev.amount ? (d / prev.amount) * 100 : 0;
+    const cls = d > 0 ? 'up' : d < 0 ? 'down' : 'flat';
+    const arrow = d > 0 ? '▲' : d < 0 ? '▼' : '—';
+    deltaHtml = `<span class="bc-val-delta ${cls}">${arrow} ${fmtCents(Math.abs(d))} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`;
+    vsHtml = `<span class="bc-val-vs">${t('valuation.vs', { date: prev.date })}${val.date === prev.date ? t('valuation.sameDaySuffix') : ''}</span>`;
+  }
+
+  // 账面对照条（市值 vs 账面余额）
+  const bookValue = ctx.balances.get(val.account) ?? 0;
+  let bookHtml = '';
+  if (bookValue !== 0) {
+    const pnl = val.amount - bookValue;
+    const maxV = Math.max(val.amount, Math.abs(bookValue)) || 1;
+    const wMarket = ((val.amount / maxV) * 100).toFixed(1);
+    const wBook = ((Math.abs(bookValue) / maxV) * 100).toFixed(1);
+    bookHtml = `<div class="bc-val-book">
+      <span>${t('valuation.bookLabel', { amount: fmtYuan(Math.abs(bookValue)) })}</span>
+      <span class="bar"><i style="width:${wMarket}%"></i><u style="left:${wBook}%"></u></span>
+      <span>${t('valuation.unrealized', { amount: fmtCents(pnl) })}</span>
+    </div>`;
+  }
+
+  // 元信息标签
+  const tags: string[] = [];
+  tags.push(`<span class="bc-meta-tag">${t('valuation.meta.kind', { kind: kindLabel })}</span>`);
+  if (accDef?.owner) tags.push(`<span class="bc-meta-tag">${t('valuation.meta.owner', { owner: accDef.owner })}</span>`);
+  if (val.blockRef || prev) tags.push(`<span class="bc-meta-tag">${t('valuation.meta.gap', { n: String(gap) })}</span>`);
+  if (isStale) tags.push(`<span class="bc-meta-tag warn">${t('valuation.meta.stale', { n: String(staleDays) })}</span>`);
+  if (sameDayExists) tags.push(`<span class="bc-meta-tag warn">${t('valuation.meta.sameDay')}</span>`);
+  if (opts.isPosted && val.blockRef) tags.push(`<span class="bc-meta-tag">${val.blockRef}</span>`);
+  if (!isKnown) tags.push(`<span class="bc-meta-tag err">${t('valuation.meta.unknownAccount')}</span>`);
+  if (isKnown && vType === 'book') {
+    tags.push(`<span class="bc-meta-tag warn">${t('valuation.meta.bookWarn')}</span>`);
+    tags.push(`<span class="bc-meta-tag">${t('valuation.meta.bookSuggest')}</span>`);
+  }
+
+  const card = parent.createDiv({ cls: `bc-val ${isStale ? 'is-stale' : ''}`.trim() });
+
+  const headEl = card.createDiv({ cls: 'bc-val-head' });
+  headEl.createDiv({ cls: 'bc-date-chip', text: val.date });
+  const acc = headEl.createDiv({ cls: 'bc-val-acc' });
+  acc.createSpan({ cls: 'ico', text: icon });
+  acc.createSpan({ cls: 'nm', text: val.account });
+  headEl.createDiv({ cls: `bc-val-kind ${kindCls}`.trim(), text: kindLabel });
+
+  if (opts.isPosted) {
+    const copy = headEl.createEl('button', {
+      cls: 'bc-copy',
+      attr: { title: t('valuation.copyTitle'), 'aria-label': t('valuation.copyTitle') },
+    });
+    setSvg(copy, ICON_COPY);
+    const ref = val.blockRef ?? '';
+    copy.addEventListener('click', async () => {
+      const ok = await copyText(ref);
+      if (ok) {
+        setSvg(copy, ICON_CHECK);
+        copy.addClass('copied');
+        setTimeout(() => {
+          setSvg(copy, ICON_COPY);
+          copy.removeClass('copied');
+        }, 1200);
+      }
+    });
+  } else {
+    headEl.createDiv({ cls: 'bc-flag pending', text: t('beancount.pending') });
+    if (opts.onPost) {
+      const postBtn = headEl.createEl('button', {
+        cls: 'bc-post-one is-val',
+        text: t('beancount.post'),
+        attr: { title: t('beancount.post'), 'aria-label': t('beancount.post') },
+      });
+      postBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void opts.onPost!();
+      });
+    }
+  }
+
+  const body = card.createDiv({ cls: 'bc-val-body' });
+  const amt = body.createDiv({ cls: 'bc-val-amt' });
+  amt.textContent = fmtYuan(val.amount);
+  if (val.currency) amt.createSpan({ cls: 'cur', text: val.currency });
+  body.insertAdjacentHTML('beforeend', deltaHtml);
+  if (vsHtml) body.insertAdjacentHTML('beforeend', vsHtml);
+  const spark = buildSpark(val.account, ctx.allVals, opts.isPosted ? undefined : val);
+  if (spark) body.insertAdjacentHTML('beforeend', spark);
+
+  if (bookHtml) card.insertAdjacentHTML('beforeend', bookHtml);
+
+  const meta = card.createDiv({ cls: 'bc-val-meta' });
+  meta.innerHTML = tags.join('');
+  if (val.comment) meta.createDiv({ cls: 'bc-val-note', text: `; ${val.comment}` });
+}
+
+/** 已入账态：估值按「每条 / 按账户 / 按月」聚合；默认按账户（资产天然维度） */
+function renderValuationsPosted(
+  box: HTMLElement,
+  toolbar: HTMLElement,
+  entriesEl: HTMLElement,
+  valuations: Valuation[],
+  ctx: ValRenderCtx,
+  openValuationModal: (account?: string) => void,
+): void {
+  const stale = computeStaleAccounts(ctx);
+  if (stale.length > 0) {
+    const banner = box.createDiv({ cls: 'bc-banner warn' });
+    banner.createSpan({ text: '⚠' });
+    const list = stale
+      .map((s) => t('valuation.banner.staleItem', { account: s.account, n: String(s.gap), threshold: String(s.threshold) }))
+      .join('；');
+    banner.createSpan({ text: t('valuation.banner.stale', { n: String(stale.length), list }) });
+    banner.createDiv({ cls: 'spacer' });
+    const upd = banner.createEl('button', { cls: 'fb-btn', text: t('valuation.banner.update') });
+    upd.addEventListener('click', () => openValuationModal(stale[0].account));
+  }
+
+  const seg = toolbar.createDiv({ cls: 'bc-seg' });
+  const modes: { mode: ValGroupMode; label: string }[] = [
+    { mode: 'flat', label: t('valuation.group.flat') },
+    { mode: 'account', label: t('valuation.group.account') },
+    { mode: 'month', label: t('valuation.group.month') },
+  ];
+  let mode: ValGroupMode = 'account';
+  const segButtons = new Map<ValGroupMode, HTMLElement>();
+  for (const m of modes) {
+    const b = seg.createEl('button', { cls: 'bc-seg-btn', text: m.label });
+    b.dataset.mode = m.mode;
+    segButtons.set(m.mode, b);
+  }
+  const spacer = toolbar.querySelector('.spacer');
+  if (spacer) toolbar.insertBefore(seg, spacer);
+  else toolbar.appendChild(seg);
+
+  function sync(): void {
+    segButtons.forEach((b, m) => b.toggleClass('is-active', m === mode));
+  }
+  function render(): void {
+    entriesEl.empty();
+    if (mode === 'flat') {
+      for (const v of valuations) renderValCard(entriesEl, v, ctx, { isPosted: true });
+      return;
+    }
+    if (mode === 'month') {
+      const map = new Map<string, Valuation[]>();
+      for (const v of valuations) {
+        const k = v.date.slice(0, 7);
+        if (!map.has(k)) map.set(k, []);
+        map.get(k)!.push(v);
+      }
+      [...map.keys()].sort().reverse().forEach((k) => {
+        const arr = map.get(k)!;
+        const g = entriesEl.createDiv({ cls: 'bc-group' });
+        const gh = g.createDiv({ cls: 'bc-group-head' });
+        gh.createSpan({ cls: 'bc-group-label', text: t('valuation.group.month.label', { k }) });
+        gh.createSpan({
+          cls: 'bc-group-sum',
+          text: t('valuation.group.month.sum', { n: String(arr.length), accounts: [...new Set(arr.map((a) => a.account))].join(' / ') }),
+        });
+        const caret = gh.createSpan({ cls: 'bc-group-caret' });
+        setSvg(caret, ICON_CARET);
+        const gb = g.createDiv({ cls: 'bc-group-body' });
+        for (const v of arr) renderValCard(gb, v, ctx, { isPosted: true });
+        gh.addEventListener('click', () => g.toggleClass('is-open', !g.hasClass('is-open')));
+      });
+      return;
+    }
+    // 按账户
+    const accounts = [...new Set(valuations.map((v) => v.account))];
+    for (const a of accounts) {
+      const arr = valuations.filter((v) => v.account === a).sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+      const latest = arr[arr.length - 1];
+      const accDef = accountDefOf(ctx.config, a);
+      const icon = accDef?.icon ?? '❓';
+      const bookValue = ctx.balances.get(a) ?? 0;
+      const pnl = latest.amount - bookValue;
+      const vType = accDef?.valuation ?? 'book';
+      const staleDays = accDef ? (accDef.staleDays ?? ctx.config?.defaultStaleDays ?? 0) : 0;
+      const gap = daysBetween(latest.date, ctx.todayStr);
+      const isStale = !!accDef && vType !== 'book' && staleDays > 0 && gap > staleDays;
+      const first = arr[0].amount;
+      const total = latest.amount - first;
+      const totalPct = first ? (total / first) * 100 : 0;
+      const cls = total > 0 ? 'up' : total < 0 ? 'down' : 'flat';
+      const g = entriesEl.createDiv({ cls: 'bc-group' });
+      const gh = g.createDiv({ cls: 'bc-group-head' });
+      gh.createSpan({ cls: 'bc-group-label', text: `${icon} ${a}` });
+      const sum = gh.createSpan({ cls: 'bc-group-sum' });
+      sum.innerHTML =
+        `<span class="gc">${t('valuation.group.latest')} <b>${fmtYuan(latest.amount)}</b></span>` +
+        `<span class="bc-val-delta ${cls}" style="font-size:.92em">${total > 0 ? '▲' : '▼'} ${totalPct >= 0 ? '+' : ''}${totalPct.toFixed(1)}%</span>` +
+        `<span class="gc">${t('valuation.unrealized', { amount: fmtCents(pnl) })}</span>` +
+        `<span class="gc">· ${t('valuation.group.times', { n: String(arr.length) })} · ${t('valuation.group.daysAgo', { n: String(gap) })}</span>` +
+        (isStale ? `<span class="bc-meta-tag warn">${t('valuation.group.stale')}</span>` : '');
+      const caret = gh.createSpan({ cls: 'bc-group-caret' });
+      setSvg(caret, ICON_CARET);
+      const gb = g.createDiv({ cls: 'bc-group-body' });
+      const tl = gb.createDiv({ cls: 'val-timeline' });
+      arr.forEach((v, i) => {
+        const isLatestRow = i === arr.length - 1;
+        const pv = i > 0 ? arr[i - 1] : undefined;
+        let dl = `<span class="v" style="color:var(--fb-text-faint)">${t('valuation.group.first')}</span>`;
+        if (pv) {
+          const d = v.amount - pv.amount;
+          const pct = pv.amount ? (d / pv.amount) * 100 : 0;
+          const c = d > 0 ? 'up' : d < 0 ? 'down' : 'flat';
+          dl = `<span class="bc-val-delta ${c}" style="font-size:.86em">${d > 0 ? '▲' : d < 0 ? '▼' : '—'} ${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>`;
+        }
+        const row = tl.createDiv({ cls: `val-tl-row ${isLatestRow ? 'is-latest' : ''}`.trim() });
+        row.createSpan({ cls: 'dot' });
+        row.createSpan({ cls: 'd', text: v.date });
+        row.createSpan({ cls: 'v', text: fmtYuan(v.amount) });
+        row.insertAdjacentHTML('beforeend', dl);
+        row.createSpan({ cls: 'g' });
+        if (v.comment) row.createSpan({ cls: 'cmt', text: v.comment });
+        if (v.blockRef) row.createSpan({ cls: 'ref', text: v.blockRef });
+      });
+      gh.addEventListener('click', () => g.toggleClass('is-open', !g.hasClass('is-open')));
+    }
+  }
+  for (const [m, b] of segButtons) b.addEventListener('click', () => { mode = m; sync(); render(); });
+  sync();
+  render();
+}
+
 function renderBeancountSource(
   source: string,
   el: HTMLElement,
@@ -178,27 +549,39 @@ function renderBeancountSource(
   openRolloverModal: () => void,
   getBlockDefinitions: () => BlockDefinitionWithParams[],
   getFinanceConfig: () => FinanceConfig | undefined,
+  openValuationModal: (account?: string) => void,
 ): void {
   const npLedger = normalizePath(ledgerPath);
   const npArchives = (archiveLedgers ?? []).map(normalizePath);
   const thisPath = normalizePath(ctx.sourcePath);
   const isCurrent = thisPath === npLedger;
 
-  const { transactions, errors } = parseFinBeancount(source);
-  const isPosted = source.includes('^t-');
+  const { transactions, valuations, errors } = parseFinBeancount(source);
+  const isPosted = /\^[tv]-/.test(source);
+  const onlyVal = valuations.length > 0 && transactions.length === 0;
+  const mixed = valuations.length > 0 && transactions.length > 0;
+
+  const config = getFinanceConfig();
+  const todayStr = localDateString(new Date());
+  const allVals = indexer.getValuations();
+  const balances = new Map(
+    calculateBalances(indexer.getPostedTransactions()).map((b) => [b.account, b.balance] as [string, number]),
+  );
+  const valCtx: ValRenderCtx = { config, todayStr, allVals, balances };
 
   const box = el.createDiv({ cls: 'finance-block fin-beancount' });
 
   // ── 头部（图标 + 标题 + 状态 pill） ──
   const head = box.createDiv({ cls: 'fb-head' });
-  setSvg(head.createDiv({ cls: 'fb-icon' }), BLOCK_ICONS.beancount);
-  head.createDiv({ cls: 'fb-title', text: t('beancount.title') });
+  setSvg(head.createDiv({ cls: onlyVal ? 'fb-icon is-val' : 'fb-icon' }), onlyVal ? BLOCK_ICONS.valuation : BLOCK_ICONS.beancount);
+  head.createDiv({ cls: 'fb-title', text: onlyVal ? t('valuation.title') : t('beancount.title') });
 
   if (isPosted && isCurrent) {
     head.createDiv({ cls: 'fb-pill is-accent', text: t('beancount.currentPill') });
   } else if (!isPosted) {
     head.createDiv({ cls: 'fb-pill is-amber', text: t('beancount.draftPill') });
   }
+  if (mixed) head.createDiv({ cls: 'fb-pill is-teal', text: t('valuation.containsPill', { n: String(valuations.length) }) });
 
   // ── 校验错误优先 ──
   if (errors.length > 0) {
@@ -212,45 +595,49 @@ function renderBeancountSource(
     return;
   }
 
-  if (transactions.length === 0) {
-    box.createDiv({ cls: 'bc-empty', text: t('log.empty') });
-    return;
+  if (transactions.length === 0 && valuations.length === 0) {
+    if (isPosted) {
+      box.createDiv({ cls: 'bc-empty', text: t('log.empty') });
+      return;
+    }
+    // 草稿态空块不 return：继续渲染工具栏（含「添加记录」按钮），让用户可以直接开始记账
   }
 
   // ── 顶部操作栏 ──
   const toolbar = box.createDiv({ cls: 'bc-toolbar' });
+  const entries = splitEntries(source);
+  const draftEntryIdx = entries
+    .map((e, i) => (/^\^[tv]-\d+/m.test(e.text) ? -1 : i))
+    .filter((i) => i >= 0);
+
   if (!isPosted) {
-    // 草案态：添加记录 + 入账 + 批量入账
-    // 关键修正：「添加记录」必须把新分录追加到当前代码块草稿区，而不是写账本；
-    // 写账本会导致 finance-log 把原草稿和已入账两笔都索引出来（已确认 bug）。
     const addBtn = toolbar.createEl('button', { cls: 'fb-btn', text: t('beancount.addRecord') });
     addBtn.addEventListener('click', () => openAppendDraftModal(app, ctx, source, getBlockDefinitions, getFinanceConfig, indexer));
 
-    toolbar.createDiv({ cls: 'bc-count', text: t('beancount.draftCount', { n: String(transactions.length) }) });
+    const total = transactions.length + valuations.length;
+    toolbar.createDiv({ cls: 'bc-count', text: t('valuation.draftCount', { n: String(total) }) });
     toolbar.createDiv({ cls: 'spacer' });
 
-    const postBtn = toolbar.createEl('button', {
-      text: t('beancount.post'),
-      cls: 'fb-btn is-cta',
-    });
-    postBtn.addEventListener('click', async () => {
-      await handlePostTransaction(app, ctx, source, el, ledgerPath, indexer);
-    });
-
-    if (transactions.length > 1) {
+    if (draftEntryIdx.length > 1) {
       const batchBtn = toolbar.createEl('button', {
-        text: t('beancount.batchPost', { n: String(transactions.length) }),
-        cls: 'fb-btn is-cta',
+        text: t('valuation.batchPost', { n: String(draftEntryIdx.length) }),
+        cls: 'fb-btn is-val',
       });
       batchBtn.addEventListener('click', async () => {
-        await handleBatchPostTransaction(app, ctx, source, el, ledgerPath, transactions.length, indexer);
+        await handleBatchPostEntry(app, ctx, source, ledgerPath, indexer, draftEntryIdx);
       });
     }
   } else {
-    // 已入账态：笔数 + （当前账本）汇总结转
-    toolbar.createDiv({ cls: 'bc-count', text: t('beancount.count', { n: String(transactions.length) }) });
+    if (onlyVal) {
+      toolbar.createDiv({
+        cls: 'bc-count',
+        text: t('valuation.count', { n: String(valuations.length), a: String(new Set(valuations.map((v) => v.account)).size) }),
+      });
+    } else {
+      toolbar.createDiv({ cls: 'bc-count', text: t('beancount.count', { n: String(transactions.length) }) });
+    }
     toolbar.createDiv({ cls: 'spacer' });
-    if (isCurrent) {
+    if (isCurrent && transactions.length > 0) {
       const rolloverBtn = toolbar.createEl('button', {
         text: t('beancount.rollover'),
         cls: 'fb-btn is-cta',
@@ -259,20 +646,56 @@ function renderBeancountSource(
     }
   }
 
-  // ── 交易卡片列表 ──
-  const entries = box.createDiv({ cls: 'bc-entries' });
-  if (isPosted) {
-    renderPostedWithGrouping(box, toolbar, entries, transactions);
-  } else {
-    for (const txn of transactions) {
-      renderTxnCard(entries, txn, false);
+  // ── 正文 ──
+  const entriesEl = box.createDiv({ cls: 'bc-entries' });
+
+  if (!isPosted) {
+    let ti = 0;
+    let vi = 0;
+    if (mixed) appendSectionLabel(entriesEl, t('valuation.sectionTxn'), false);
+    for (const e of entries) {
+      if (e.kind === 'txn') {
+        const txn = transactions[ti++];
+        renderTxnCard(entriesEl, txn, false, config, () => handlePostEntry(app, ctx, source, ledgerPath, indexer, entries.indexOf(e)), e.text);
+      }
     }
+    if (mixed) appendSectionLabel(entriesEl, t('valuation.sectionVal'), true);
+    for (const e of entries) {
+      if (e.kind === 'valuation') {
+        const val = valuations[vi++];
+        renderValCard(entriesEl, val, valCtx, {
+          isPosted: false,
+          onPost: () => handlePostEntry(app, ctx, source, ledgerPath, indexer, entries.indexOf(e)),
+        });
+      }
+    }
+  } else if (mixed) {
+    appendSectionLabel(entriesEl, t('valuation.sectionTxn'), false);
+    renderPostedWithGrouping(box, toolbar, entriesEl, transactions, config);
+    appendSectionLabel(entriesEl, t('valuation.sectionVal'), true);
+    for (const v of valuations) renderValCard(entriesEl, v, valCtx, { isPosted: true });
+  } else if (onlyVal) {
+    renderValuationsPosted(box, toolbar, entriesEl, valuations, valCtx, openValuationModal);
+  } else {
+    renderPostedWithGrouping(box, toolbar, entriesEl, transactions, config);
   }
 
-  // ── 草案态：零和校验脚注 ──
-  if (!isPosted) {
+  // ── 脚注：零和 + 估值 + 软告警汇总 ──
+  // 告警汇总在已入账态也要出现——分组折叠时卡片上的标签看不见，靠这条兜住感知。
+  const warnCount = config
+    ? transactions.filter((tx) => auditTransaction(tx, config.accounts, config.transactionTypes).length > 0).length
+    : 0;
+  if (!isPosted || warnCount > 0) {
     const foot = box.createDiv({ cls: 'bc-foot' });
-    foot.createDiv({ cls: 'bc-check', text: `✓ ${t('beancount.zeroSum')} · ${transactions.length}` });
+    if (!isPosted && transactions.length > 0) {
+      foot.createDiv({ cls: 'bc-check', text: `✓ ${t('beancount.zeroSum')} · ${transactions.length}` });
+    }
+    if (!isPosted && valuations.length > 0) {
+      foot.createDiv({ cls: 'bc-check is-val', text: `✓ ${t('valuation.zeroSumNote', { n: String(valuations.length) })}` });
+    }
+    if (warnCount > 0) {
+      foot.createDiv({ cls: 'bc-check is-warn', text: `⚠ ${t('beancount.warn.foot', { n: String(warnCount) })}` });
+    }
   }
 
   // ── 已入账态：账本流转链（仅当存在承接/转结关系时） ──
@@ -282,7 +705,7 @@ function renderBeancountSource(
 }
 
 /** 渲染单笔交易卡片（草案态/已入账态复用同一结构） */
-function renderTxnCard(parent: HTMLElement, txn: Transaction, isPosted: boolean): void {
+function renderTxnCard(parent: HTMLElement, txn: Transaction, isPosted: boolean, config?: FinanceConfig, onPost?: () => void, entryText?: string): void {
   const card = parent.createDiv({ cls: `bc-txn ${isPosted ? '' : 'is-draft'}`.trim() });
 
   const txnHead = card.createDiv({ cls: 'bc-txn-head' });
@@ -295,44 +718,92 @@ function renderTxnCard(parent: HTMLElement, txn: Transaction, isPosted: boolean)
       attr: { title: t('beancount.copyTitle'), 'aria-label': t('beancount.copyTitle') },
     });
     setSvg(copy, ICON_COPY);
+    // 仅图标，无文字
     copy.addEventListener('click', async () => {
       // 复制块引用（^t-xxxx），供 finance-log 的 id: 参数精准查询单笔账。
-      // 不复制完整交易信息——用户只想要块引用这一行。
       const text = txn.id ?? '';
       if (!text) return;
       const ok = await copyText(text);
       if (ok) {
         setSvg(copy, ICON_CHECK);
+        // 仅图标变化，无文字
         copy.addClass('copied');
         setTimeout(() => {
           setSvg(copy, ICON_COPY);
+          // 清空文本节点、保留 SVG
+          copy.findAll('span').forEach((s) => s.remove());
+          // 仅图标，无文字
           copy.removeClass('copied');
         }, 1200);
       }
     });
   } else {
-    txnHead.createDiv({ cls: 'bc-flag pending', text: t('beancount.pending') });
+    // 草稿态：只有入账按钮（复制按钮仅在已入账态出现）
+    if (onPost) {
+      const postBtn = txnHead.createEl('button', {
+        cls: 'bc-post-one',
+        text: t('beancount.post'),
+        attr: { title: t('beancount.post'), 'aria-label': t('beancount.post') },
+      });
+      postBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void onPost();
+      });
+    }
   }
 
-  // 分录行：账户（紫·等宽） … 金额（借贷红绿·tabular）
+  // 分录行：账户（紫·等宽） … 方向标签（流入/流出/来源/去向）… 金额（借贷红绿·tabular）
   const postings = card.createDiv({ cls: 'bc-postings' });
   for (const leg of txn.legs) {
     const row = postings.createDiv({ cls: 'bc-posting' });
     row.createDiv({ cls: 'acc', text: leg.account });
+    const d = dirOfPost(leg, config);
+    row.createSpan({ cls: `pdir pdir-${d.cls}`, text: d.label });
     const amt = row.createDiv({ cls: `amt ${leg.amount < 0 ? 'neg' : 'pos'}` });
     const yuan = Math.abs(leg.amount) / 100;
-    amt.textContent = `${leg.amount < 0 ? '-' : '+'}${yuan.toFixed(2)}`;
+    amt.textContent = `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
-  // 元数据标签
+  // 元数据标签：交易类型用中性 pill 展示（受管词表，仅作查询/筛选标签，不再判定收支）
   const meta = card.createDiv({ cls: 'bc-meta-line' });
-  if (txn.txnType) meta.createEl('span', { cls: 'bc-meta-tag', text: `type: ${txn.txnType}` });
+  if (txn.txnType) meta.createEl('span', { cls: 'type-pill', text: txn.txnType });
   if (txn.owner) meta.createEl('span', { cls: 'bc-meta-tag', text: `owner: ${txn.owner}` });
   if (txn.fields) {
     for (const [k, v] of Object.entries(txn.fields)) {
       meta.createEl('span', { cls: 'bc-meta-tag', text: `${k}: ${v}` });
     }
   }
+
+  // 软告警（报告 #1）：只挂标签、不拦截入账，鼠标悬停给出完整解释
+  for (const w of auditTransaction(txn, config?.accounts, config?.transactionTypes)) {
+    meta.createEl('span', {
+      cls: 'bc-meta-tag warn',
+      text: warnLabel(w),
+      attr: { title: warnTip(w), 'aria-label': warnTip(w) },
+    });
+  }
+
+  // 草稿态：在 meta 行尾部显示"待入账"标记
+  if (!isPosted) {
+    meta.createEl('span', { cls: 'bc-flag pending', text: t('beancount.pending') });
+  }
+}
+
+/** 软告警短标签（挂在交易卡片 meta 行） */
+function warnLabel(w: TxnWarning): string {
+  return t(`beancount.warn.${w.code === 'unclassifiedAccount' ? 'unclassified' : w.code}`);
+}
+
+/** 软告警完整解释（tooltip） */
+function warnTip(w: TxnWarning): string {
+  if (w.code === 'signFlipped') {
+    return t('beancount.warn.signFlippedTip', { accounts: w.accounts.join('、') });
+  }
+  if (w.code === 'unclassifiedAccount') {
+    return t('beancount.warn.unclassifiedTip', { accounts: w.accounts.join('、') });
+  }
+  const direction = t(w.tagDirection === 'income' ? 'beancount.warn.dirIncome' : 'beancount.warn.dirExpense');
+  return t('beancount.warn.tagMismatchTip', { tag: w.tag ?? '', direction });
 }
 
 type GroupMode = 'flat' | 'day' | 'week' | 'month' | 'custom';
@@ -347,6 +818,7 @@ function renderPostedWithGrouping(
   toolbar: HTMLElement,
   entries: HTMLElement,
   transactions: Transaction[],
+  config?: FinanceConfig,
 ): void {
   const modes: { mode: GroupMode; label: string }[] = [
     { mode: 'flat', label: t('beancount.group.flat') },
@@ -452,7 +924,7 @@ function renderPostedWithGrouping(
   function renderGroups(): void {
     entries.empty();
     if (mode === 'flat') {
-      for (const txn of transactions) renderTxnCard(entries, txn, true);
+      for (const txn of transactions) renderTxnCard(entries, txn, true, config);
       return;
     }
 
@@ -470,7 +942,7 @@ function renderPostedWithGrouping(
 
     for (const k of keys) {
       const arr = map.get(k)!;
-      const s = computeLedgerSummary(arr);
+      const s = computeLedgerSummary(arr, config);
       const group = entries.createDiv({ cls: 'bc-group' });
       const head = group.createDiv({ cls: 'bc-group-head' });
       head.createSpan({ cls: 'bc-group-label', text: groupLabel(k) });
@@ -483,7 +955,7 @@ function renderPostedWithGrouping(
       const caret = head.createSpan({ cls: 'bc-group-caret' });
       setSvg(caret, ICON_CARET);
       const body = group.createDiv({ cls: 'bc-group-body' });
-      for (const txn of arr) renderTxnCard(body, txn, true);
+      for (const txn of arr) renderTxnCard(body, txn, true, config);
       head.addEventListener('click', () => group.toggleClass('is-open', !group.hasClass('is-open')));
     }
   }
@@ -565,15 +1037,16 @@ function renderLedgerChain(
 }
 
 /**
- * 处理入账操作（草案 → 账本）
+ * 处理入账操作（草案 → 账本）：入账区块内指定下标的单条分录（交易 ^t- 或估值 ^v-）。
+ * entryIndex 来自 splitEntries(source) 的扁平下标，与 postTransactionsInBlock 的 indices 对齐。
  */
-async function handlePostTransaction(
+async function handlePostEntry(
   app: App,
   ctx: MarkdownPostProcessorContext,
   source: string,
-  _el: HTMLElement,
   ledgerPath: string,
   indexer: Indexer,
+  entryIndex: number,
 ): Promise<void> {
   const sourcePath = ctx.sourcePath;
   const sourceFile = app.vault.getAbstractFileByPath(sourcePath);
@@ -602,28 +1075,39 @@ async function handlePostTransaction(
     return;
   }
 
-  const result = await postTransaction(app, sourceFile, source, startPos, endPos, ledgerPath);
+  const { results, ledgerPath: lp } = await postTransactionsInBlock(
+    app,
+    sourceFile,
+    source,
+    startPos,
+    endPos,
+    ledgerPath,
+    [entryIndex],
+  );
 
-  if (result.success) {
-    new Notice(t('beancount.postSuccess', { ledgerPath: result.ledgerPath || '' }));
-    if (result.ledgerPath) await indexer.updateFile(result.ledgerPath);
+  const ok = results.filter((r) => r.success);
+  if (ok.length > 0) {
+    new Notice(t('beancount.postSuccess', { ledgerPath: lp || ledgerPath }));
+    if (lp) await indexer.updateFile(lp);
     await indexer.updateFile(sourcePath);
-  } else {
-    new Notice(t('beancount.postError.generic', { error: result.error || '' }));
+  }
+  const failed = results.find((r) => !r.success);
+  if (failed) {
+    new Notice(t('beancount.postError.generic', { error: failed.error || '' }));
   }
 }
 
 /**
- * 处理批量入账操作（一个代码块里多笔交易一键各自独立入账）
+ * 处理批量入账操作（一个代码块里多笔草案分录一键各自独立入账，交易与估值混合也支持）。
+ * indices 来自 splitEntries(source) 的扁平下标数组。
  */
-async function handleBatchPostTransaction(
+async function handleBatchPostEntry(
   app: App,
   ctx: MarkdownPostProcessorContext,
   source: string,
-  _el: HTMLElement,
   ledgerPath: string,
-  _txnCount: number,
   indexer: Indexer,
+  indices: number[],
 ): Promise<void> {
   const sourcePath = ctx.sourcePath;
   const sourceFile = app.vault.getAbstractFileByPath(sourcePath);
@@ -652,21 +1136,28 @@ async function handleBatchPostTransaction(
     return;
   }
 
-  const result = await batchPostTransactions(app, sourceFile, [{
+  const { results, ledgerPath: lp } = await postTransactionsInBlock(
+    app,
+    sourceFile,
     source,
     startPos,
     endPos,
-  }], ledgerPath);
+    ledgerPath,
+    indices,
+  );
 
-  if (result.success > 0) {
+  const success = results.filter((r) => r.success).length;
+  const failed = results.filter((r) => !r.success).length;
+  if (success > 0) {
     new Notice(t('beancount.batchPostSuccess', {
-      success: String(result.success),
-      total: String(result.total),
+      success: String(success),
+      total: String(results.length),
     }));
-    if (result.results[0]?.ledgerPath) await indexer.updateFile(result.results[0].ledgerPath);
+    if (lp) await indexer.updateFile(lp);
     await indexer.updateFile(sourcePath);
-  } else {
-    const firstError = result.results.find((r) => !r.success);
+  }
+  if (failed > 0) {
+    const firstError = results.find((r) => !r.success);
     new Notice(t('beancount.postError.generic', { error: firstError?.error || '' }));
   }
 }

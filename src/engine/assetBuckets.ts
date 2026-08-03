@@ -24,8 +24,9 @@ import type {
   FinanceConfig,
   Valuation,
 } from '../types';
-import { computeNetWorth } from './networth';
+import { computeNetWorth, type AccountFlow } from './networth';
 import { buildFxRates } from './fx';
+import { resolveAccountDef } from '../util/ledgerView';
 
 export interface AssetBuckets {
   /** 生息增长类市值（分） */
@@ -55,6 +56,11 @@ export interface BucketOpts {
   annualSpend?: AmountInCents;
   /** 应急金月数（默认 6） */
   bufferMonths?: number;
+  /**
+   * 账户流水（估值日之后的买卖用于估值结转，见 networth.carryForwardValuation）。
+   * 省略时退化为「估值行原样使用」的旧行为。
+   */
+  flows?: Map<string, AccountFlow[]>;
 }
 
 type ResolvedRole = CashflowRole | 'liability';
@@ -91,12 +97,8 @@ export function bucketAssets(
   const result = computeNetWorth(
     config.accounts,
     balances,
-    valuations,
-    staleDaysDefault,
-    new Date(),
-    fxRates,
-    baseCurrency,
-    ownerFilter,
+    { valuations, staleDaysDefault, today: new Date(), fxRates, baseCurrency },
+    { flows: opts.flows, ownerFilter },
   );
 
   let growthValue = 0;
@@ -105,10 +107,10 @@ export function bucketAssets(
   let rentalValue = 0;
   let liabilities = 0;
 
-  const defByName = new Map(config.accounts.map((a) => [a.name, a] as const));
   for (const av of result.accounts) {
-    const def = defByName.get(av.account);
-    const role = resolveRole(def, def?.class);
+    // 子账户（如「资产:股票:腾讯」）继承父账户定义，否则分桶会漏掉持仓级账户
+    const def = resolveAccountDef(av.account, config.accounts);
+    const role = resolveRole(def, def?.class ?? av.accountClass ?? undefined);
     const mv = av.marketValue;
     if (role === 'liability') liabilities += Math.abs(mv);
     else if (role === 'growth') growthValue += mv;

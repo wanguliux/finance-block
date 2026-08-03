@@ -438,8 +438,9 @@ export function projectLifeCashflow(input: LifePlanInput): LifeProjection {
   }
 
   const points: LifeYearPoint[] = [];
-  const cashRate = input.cashRate ?? input.nominalRate;
-  // 生息本金拆成 growth / cash 两段，分别按 rr / cashRate 复利
+  const cashRateNominal = input.cashRate ?? input.nominalRate;
+  const cashRate = realRate(cashRateNominal, input.inflation);
+  // 生息本金拆成 growth / cash 两段，分别按 rr / cashRate（均为实际购买力收益率）复利
   let growthP = input.principal - (input.cashPrincipal ?? 0);
   let cashP = input.cashPrincipal ?? 0;
   if (growthP < 0) { cashP += growthP; growthP = 0; } // 安全：cashPrincipal 不得超过本金

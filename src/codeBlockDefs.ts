@@ -10,7 +10,7 @@
 
 import { t } from './i18n';
 
-export type ParamType = 'text' | 'number' | 'select' | 'account' | 'date' | 'amount';
+export type ParamType = 'text' | 'number' | 'select' | 'date' | 'amount' | 'legs';
 
 /**
  * 下拉选项的动态数据源。
@@ -42,23 +42,24 @@ export interface CodeBlockDef {
   titleKey: string; // i18n key（名称）
   descKey: string; // i18n key（说明）
   template?: string; // 模板（含 {{key}} 占位）——有 template 时用模板替换模式
+  multiLeg?: boolean; // 复式分录块：录入为 N 腿动态结构（type:'legs' 参数驱动），文本由 buildCodeBlock 动态生成
   params: CodeBlockParamDef[];
 }
 
 /** finance-block 提供的所有可插入代码块定义 */
 export const FINANCE_CODE_BLOCK_DEFS: CodeBlockDef[] = [
-  // ── 存储层：复式记账分录（模板模式，结构化录入） ─────────
+  // ── 存储层：复式记账分录（multiLeg 动态 N 腿录入） ─────────
+  // 不再用固定 2 腿 template（from -amount / to +amount），改为：
+  //   - 结构化参数只保留 date / narration / txnType / owner（标签维度）
+  //   - 复式分录本身由 type:'legs' 参数驱动的动态编辑器录入（N 腿 + 一键补平）
+  //   - 借贷符号由账户类别推导（界面只填正数金额 + 方向标签，不出现 +/-），见《报告》#2/#6
+  // 生成文本由 buildCodeBlock 的 multiLeg 分支按 values['legs']（signed cents JSON）逐腿输出。
   {
     language: 'fin-beancount',
     icon: 'file-text',
     titleKey: 'block.fin-beancount',
     descKey: 'block.fin-beancount.desc',
-    template:
-      '{{date}} * {{narration}}\n' +
-      '  {{fromAccount}}  -{{amount}}\n' +
-      '  {{toAccount}}  {{amount}}\n' +
-      '  type: {{txnType}}\n' +
-      '  owner: {{owner}}',
+    multiLeg: true,
     params: [
       {
         key: 'date',
@@ -69,42 +70,15 @@ export const FINANCE_CODE_BLOCK_DEFS: CodeBlockDef[] = [
         autoToday: true,
       },
       {
-        key: 'narration',
-        labelKey: 'param.narration',
-        descKey: 'param.narration.desc',
-        type: 'text',
-        placeholder: '午餐 牛肉面',
-      },
-      {
-        key: 'amount',
-        labelKey: 'param.amount',
-        descKey: 'param.amount.desc',
-        type: 'number',
-        placeholder: '35.00',
-        optional: false,
-      },
-      {
-        key: 'fromAccount',
-        labelKey: 'param.fromAccount',
-        descKey: 'param.fromAccount.desc',
-        type: 'account',
-        optional: false,
-      },
-      {
-        key: 'toAccount',
-        labelKey: 'param.toAccount',
-        descKey: 'param.toAccount.desc',
-        type: 'account',
-        optional: false,
-      },
-      {
         key: 'txnType',
         labelKey: 'param.txnType',
         descKey: 'param.txnType.desc',
         type: 'select',
         optionsFrom: 'transactionTypes',
-        // 兜底静态选项：配置未加载时仍可用（与 DEFAULT_CONFIG 预设一致）
-        options: ['餐饮', '交通', '购物', '居住', '娱乐', '医疗', '教育', '通讯', '其他支出', '工资', '奖金', '投资收益', '副业', '其他收入', '转账'],
+        // 兜底静态选项：配置未加载时仍可用（仅作示例词表；真实词表来自
+        // finance-config.json 的 transactionTypes，且已不含「转账/投资收益」这类非分类项——
+        // type 只是查询标签，不再承担「资产转换 vs 收支」的语义区分，见《报告》P0 #2）。
+        options: ['餐饮', '交通', '购物', '居住', '娱乐', '医疗', '教育', '通讯', '其他支出', '工资', '奖金', '副业', '其他收入'],
       },
       {
         key: 'owner',
@@ -114,6 +88,20 @@ export const FINANCE_CODE_BLOCK_DEFS: CodeBlockDef[] = [
         optionsFrom: 'owners',
         options: ['自己', '家庭'],
         defaultValue: '自己',
+      },
+      {
+        key: 'narration',
+        labelKey: 'param.narration',
+        descKey: 'param.narration.desc',
+        type: 'text',
+        placeholder: '午餐 牛肉面',
+      },
+      {
+        key: 'legs',
+        labelKey: 'param.legs',
+        descKey: 'param.legs.desc',
+        type: 'legs',
+        optional: false,
       },
     ],
   },
@@ -352,6 +340,16 @@ export const FINANCE_CODE_BLOCK_DEFS: CodeBlockDef[] = [
     ],
   },
 
+  // ── 视图层：日常花费 + 贷款（finance-recurring，V1 + V2） ──
+  // 无必填参数：界面（待入账草稿 / 我的计划 / 我的贷款）全部由 config + 账本虚派生。
+  {
+    language: 'finance-recurring',
+    icon: 'repeat',
+    titleKey: 'block.finance-recurring',
+    descKey: 'block.finance-recurring.desc',
+    params: [],
+  },
+
   // 注：原 finance-fi 的能力已并入 finance-ficalc，但本块现为 what-if 沙盒（参数一律手填），
   // 不再有「从账本取数」开关；故 finance-fi 从插入器与 registry 双双移除，存量 ```finance-fi 需改为 ```finance-ficalc。
 ];
@@ -366,15 +364,40 @@ export const FINANCE_CODE_BLOCK_DEFS: CodeBlockDef[] = [
 export interface BuildableDef {
   language: string;
   template?: string;
+  multiLeg?: boolean;
   params: { key: string }[];
 }
 
 export function buildCodeBlock(def: BuildableDef, values: Record<string, string>): string {
+  // 复式分录块（fin-beancount）：N 腿动态生成，values['legs'] 为 signed cents 的 JSON 数组
+  if (def.multiLeg) {
+    const date = (values['date'] ?? '').trim();
+    const narr = (values['narration'] ?? '').trim();
+    const txnType = (values['txnType'] ?? '').trim();
+    const owner = (values['owner'] ?? '').trim();
+
+    const lines: string[] = [`${date} * ${narr}`.trim()];
+    let legs: Array<{ account: string; amountCents: number }> = [];
+    try {
+      const parsed = JSON.parse(values['legs'] ?? '[]');
+      if (Array.isArray(parsed)) legs = parsed;
+    } catch {
+      legs = [];
+    }
+    for (const l of legs) {
+      if (!l.account || !l.account.trim()) continue;
+      lines.push(`  ${l.account.trim()}  ${l.amountCents}`);
+    }
+    if (txnType) lines.push(`  type: ${txnType}`);
+    if (owner) lines.push(`  owner: ${owner}`);
+    return '```' + def.language + '\n' + lines.join('\n') + '\n```\n';
+  }
+
   if (def.template) {
     let result = '```' + def.language + '\n' + def.template + '\n```' + '\n';
     for (const [key, val] of Object.entries(values)) {
       if (val && val.trim() !== '') {
-        result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val.trim());
+        result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), () => val.trim());
       }
     }
     result = result.replace(/\{\{[^}]+\}\}/g, '');

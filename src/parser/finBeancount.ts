@@ -74,6 +74,9 @@ export function parseFinBeancount(source: string, opts?: { draft?: boolean }): P
   const lines = source.split(/\r?\n/);
 
   let current: PendingTxn | null = null;
+  // 最近一条估值行：用于把紧随其后的 ^v- 块引用行归属给它（估值入账后原位保留在
+  // fin-beancount 块中，形态为「估值行 + ^v- 行」，与交易的 ^t- 对称）。
+  let lastValuation: Valuation | null = null;
   let txnIndex = 0;
 
   const flush = (): void => {
@@ -136,15 +139,21 @@ export function parseFinBeancount(source: string, opts?: { draft?: boolean }): P
     // 空行 → 结束当前交易
     if (line.trim() === '') {
       flush();
+      lastValuation = null;
       continue;
     }
 
-    // 跳过块引用 ID 行（^t-YYYYMMDDHHmmss，Obsidian block ref，非交易数据）
-    // 入账后的分录会在 fence 内附带该行，解析时应忽略其作为交易行，
-    // 但需捕获其真实值作为交易 id（finance-log 的 id 参数据此精确查询），
-    // 同时让 indexer 的 isPosted 判定（源码含 ^t-）生效。
-    if (/^\^t-/.test(line.trim())) {
-      if (current) current.blockRefId = line.trim();
+    // 跳过块引用 ID 行（^t- 交易 / ^v- 估值，Obsidian block ref，非数据行）
+    // 入账后的分录/估值会在 fence 内附带该行，解析时应忽略其作为数据行，
+    // 但需捕获其真实值：^t- → 交易 id（finance-log 的 id 参数据此精确查询）；
+    // ^v- → 估值的 blockRef。同时让 isPosted 判定（源码含 ^t-/^v-）生效。
+    if (/^\^[tv]-/.test(line.trim())) {
+      const ref = line.trim();
+      if (ref.startsWith('^v-')) {
+        if (lastValuation) lastValuation.blockRef = ref;
+      } else if (current) {
+        current.blockRefId = ref;
+      }
       continue;
     }
 
@@ -152,13 +161,15 @@ export function parseFinBeancount(source: string, opts?: { draft?: boolean }): P
     const valMatch = VALUATION_RE.exec(line);
     if (valMatch) {
       flush(); // 估值行结束当前未闭合的交易
-      valuations.push({
+      const val: Valuation = {
         date: valMatch[1],
         account: valMatch[2],
         amount: parseInt(valMatch[3], 10),
         currency: valMatch[4] || undefined,
         comment: inlineComment || undefined,
-      });
+      };
+      valuations.push(val);
+      lastValuation = val;
       continue;
     }
 
@@ -166,6 +177,7 @@ export function parseFinBeancount(source: string, opts?: { draft?: boolean }): P
     const dateMatch = DATE_RE.exec(line);
     if (dateMatch) {
       flush(); // 先结束上一笔
+      lastValuation = null;
       txnIndex++;
       current = {
         date: dateMatch[1],
