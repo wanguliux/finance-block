@@ -1,195 +1,195 @@
 <p align="center">
-<a href="./README.md"><b>🇨🇳 中文</b></a> &nbsp;|&nbsp; <a href="./README.en.md">🇺🇸 English</a>
+<a href="./README.zh-CN.md">🇨🇳 中文</a> &nbsp;|&nbsp; <b>🇺🇸 English</b>
 </p>
 
-# 财务块 Finance Block
+# Finance Block
 
-一款以实现个人全人生阶段财务管理为目标的 Obsidian 个人财务插件。它把复式记账、流水查询、预算执行、收支热力图、现金流模拟、资产总览、日常花费与贷款管理全部收进**代码块**里，采用beancount记账方式——你的账本就是一个 `fin-beancount` 代码块，是**唯一真源**；所有视图从同一份数据实时派生。数据以纯文本（Markdown / JSON）存放在你的 vault 中，可双链、可进 Git、可随时手改。
+An Obsidian personal-finance plugin built to manage your finances across every stage of life. It brings double-entry bookkeeping, transaction log, budget tracking, income/expense heatmap, cash-flow simulation, asset overview, and recurring expenses/loans all into **code blocks**, using beancount-style bookkeeping — your ledger *is* a `fin-beancount` code block, the **single source of truth**; every view derives live from the same data. Data lives as plain text (Markdown / JSON) inside your vault — linkable, git-able, hand-editable.
 
-> 插件 ID：`finance-block` ｜ 最低 Obsidian 版本：`1.13.4` ｜ 许可证：MIT ｜ 语言：中文 / English
-
----
-
-## 🧭 设计哲学：你的账本，就是你的笔记
-
-大多数记账软件把数据关在私有数据库里，你想导出、想关联笔记、想换工具，处处受制。本插件反其道而行——**账本就是笔记**，一切围绕「单一真源 + 实时派生」展开：
-
-| 你得到什么 | 怎么保证 | 所在模块 |
-|------------|----------|----------|
-| **记一笔，不用懂借贷** | 界面只填正数金额 + 方向标签，借贷符号由账户类别自动推导；零和校验即时拦截错误 | 复式记账 §1 |
-| **账本永远是真相** | 单一真源：所有视图渲染时实时从账本 + 配置派生，无缓存副本可漂移 | 设计哲学 |
-| **净资产恒等式成立** | 账户强制归属五大类（资产/负债/权益/收入/费用），「资产 − 负债 = 权益 + 留存」是结构不变量 | 记账 §1 |
-| **想看的账，一条不少** | 流水多维筛选：日期窗口 / 金额范围 / 账户 / 分类 / 归属 / 块引用 ID | 流水 §2 |
-| **花超了，马上知道** | 预算按分类 × 周期展示执行率与三档达成状态 | 预算 §3 |
-| **钱花在哪，一目了然** | 收支热力图：绿=收入、红=支出，总览日历 + 分类矩阵双视角 | 热力图 §4 |
-| **回答「我何时自由」** | 现金流模拟器：三种提取策略 × 蒙特卡洛 × 人生事件冲击 | 模拟 §5 |
-| **设一次，天天自动** | 日常花费 / 贷款计划自动生成待入账分录，一键入账 | 自动化 §7 |
-
-下面分模块展开。
+> Plugin ID: `finance-block` ｜ Minimum Obsidian version: `1.13.4` ｜ License: MIT ｜ Languages: 中文 / English
 
 ---
 
-## ✨ 功能特性
+## 🧭 Design Philosophy: Your Ledger Is Your Note
 
-### 1. 复式记账真源 —— 记一笔，不用懂会计
+Most budgeting apps lock your data in a private database — exporting, linking notes, or switching tools is a fight. This plugin does the opposite: **the ledger is the note**. Everything revolves around "single source of truth + live derivation":
 
-账本是一个 ` ```fin-beancount``` ` 代码块，使用自研的轻量复式语法（各腿之和必须为 0，差额精确到分）。**你永远不用手写负数**——界面只填正数金额，借贷符号由账户类别自动推导。
+| What you get | How it's guaranteed | Module |
+|--------------|---------------------|--------|
+| **Book an entry without knowing debit/credit** | The UI only asks for positive amounts + a direction label; signs are derived from account class; zero-sum validation catches mistakes instantly | Ledger §1 |
+| **The ledger is always the truth** | Single source of truth: every view derives live from the ledger + config at render time — no cached copies to drift | Philosophy |
+| **The net-worth identity always holds** | Accounts must belong to one of five classes (Asset / Liability / Equity / Income / Expense), making "Assets − Liabilities = Equity + retained earnings" a structural invariant | Ledger §1 |
+| **See exactly the transactions you want** | Multi-dimensional log filters: date window / amount range / account / category / owner / block-ref ID | Log §2 |
+| **Know the moment you overspend** | Budget shows execution rate per category × period with three-level status | Budget §3 |
+| **See at a glance where money goes** | Income/expense heatmap: green = income, red = spending, calendar + category matrix | Heatmap §4 |
+| **Answer "when am I free?"** | Cash-flow simulator: 3 withdrawal strategies × Monte Carlo × life-event shocks | Simulator §5 |
+| **Set it once, automated forever** | Recurring-expense / loan plans generate pending entries automatically, one-click to post | Automation §7 |
 
-- **N 腿动态录入**：一笔购物拆成「餐饮 + 日用」？点「拆分分录」任意加腿，「一键补平」自动补齐差额，「反转方向」快速切换收支。
-- **草稿态 / 已入账态**：草稿块（无 `^t-` 引用行）不参与任何统计；点「入账」补上块引用并写入账本文件——想好了再入账，也可「批量入账」一次清空。
-- **软告警层**：符号可能反了 / 账户未在设置中声明 / 分类标签与收支结构不符——只提示、不拦截，悬停看完整解释。
-- **账本流转链**：汇总结转后，区块自动标注「承接自哪个账本、结转去了哪里」，十年账本链一眼可溯。
-- 已入账后支持按 每笔 / 按天 / 按周 / 按月 / 自定义 分组浏览，组头带收支净额与笔数。
+The modules below go into detail.
 
-**示例**：记录一顿午餐，不填符号、不填负数——
+---
+
+## ✨ Features
+
+### 1. Double-Entry Source of Truth — Book It Without Knowing Accounting
+
+The ledger is a ` ```fin-beancount``` ` code block using a lightweight custom double-entry syntax (all legs must sum to 0, to the cent). **You never type a negative number** — the UI only asks for positive amounts; signs are derived from the account class.
+
+- **N-leg dynamic entry**: split one purchase into "Food + Daily goods"? Add legs freely with "Split entry", hit "Auto-balance" to fill the missing amount, or "Flip direction" to toggle income/expense.
+- **Draft / Posted states**: draft blocks (without a `^t-` ref line) count toward nothing; click "Post" to append the block reference and write the entry into the ledger file — post when you're ready, or "Post all" to clear at once.
+- **Soft warning layer**: sign may be flipped / account not declared in settings / category tag inconsistent with the structure — hints only, never blocking; hover for full explanations.
+- **Ledger chain**: after a rollover, blocks annotate where they were carried from and where they were rolled to — a decade of ledgers stays traceable.
+- Posted entries can be grouped flat / by day / by week / by month / custom, with per-group net totals and counts.
+
+**Example**: record a lunch with no signs, no negatives —
 
 ```fin-beancount
-2026-08-03 * 午餐 牛肉面
-  费用:餐饮  3500
-  银行卡   -3500
-  type: 餐饮
-  owner: 自己
+2026-08-03 * Lunch beef noodles
+  Expense:Food  3500
+  Bank-Card   -3500
+  type: Food
+  owner: Me
 ```
 
-### 2. 流水视图 —— 想看的账，一条不少
+### 2. Transaction Log — See Exactly What You Want
 
-`finance-log` 从账本取数倒序展示，汇总栏显示区间内收入 / 支出 / 净额（草稿不计入）。
+`finance-log` renders the feed in reverse-chronological order with an income / expense / net summary (drafts excluded).
 
-- **多维筛选**：起始日期 + 天数（留空 = 每天滚动看最近 30 天）、金额范围（运算符 + 数值引导式输入，如 `>100`、`100-200`）、账户（任一分录命中即算）、分类、归属、块引用 ID（多个用 `;` 分隔，填了即忽略日期窗口）。
-- 收入 / 支出 / 草稿三档切换 + 关键词搜索摘要与账户。
+- **Multi-dimensional filters**: start date + days back (leave empty for a rolling 30-day window), amount range (operator + guided input, e.g. `>100` or `100-200`), account (any leg matches), category, owner, and block-reference ID (multiple IDs with `;`, overrides the date window).
+- Income / expense / draft tabs + keyword search across narration and accounts.
 
-**场景**：「上个月在餐饮上花了多少？」写一个 `finance-log`，选分类=餐饮、天数=31，汇总栏直接给出答案。
+**Scenario**: "How much did I spend on food last month?" Write a `finance-log` with `type: Food` and `day: 31` — the summary bar answers directly.
 
-### 3. 预算执行 —— 花超了，马上知道
+### 3. Budget Tracker — Know the Moment You Overspend
 
-- 在设置 → 预算管理中为每个分类设定支出上限与周期（每日 / 每周 / 每月 / 每年 / 自定义 N 日）。
-- 视图按分类渲染**执行率** + 周期进度条 + 三档达成状态（安全 / 接近 / 超支），超支前就能看到。
+- Set a spending cap and period (daily / weekly / monthly / yearly / custom N days) per category in Settings → Budgets.
+- The view renders **execution rate** + period progress bars + three-level status (safe / near / over) — you see the overspend coming before it happens.
 
-### 4. 收支热力图 —— 钱花在哪，一目了然
+### 4. Income/Expense Heatmap — See Where Money Goes at a Glance
 
-- **双向着色**：绿 = 净收入、红 = 净支出、空 = 无收支（中国记账配色惯例），各自标尺归一，工资日不会把支出日压浅。
-- **双视角**：总览日历（日粒度，一眼看收支节奏）+ 分类矩阵（分类 × 周/月粒度，行尾附分类走势曲线，行头可排序）。
-- 近 N 天窗口（默认 182，可调 7–365）、按分类筛选；悬停看金额 / 笔数 / 环比，点击格子展开当日明细。
+- **Dual-direction coloring**: green = net income, red = net spending, blank = no activity (China bookkeeping convention); each direction normalizes on its own scale so payday doesn't wash out spending days.
+- **Two views**: calendar overview (day granularity, spot your rhythm instantly) + category matrix (category × week/month granularity, with per-category trend sparklines and sortable row headers).
+- Rolling N-day window (default 182, 7–365), category filter; hover for amount / count / period-over-period change, click a cell to expand that day's detail.
 
-### 5. 现金流模拟器 —— 回答「我什么时候能自由」
+### 5. Cash-Flow Simulator — Answer "When Will I Be Free?"
 
-`finance-ficalc` 是一个 what-if 推演沙盒：参数可手填，也可从记账实况自动预填，交互式滑条微调后**显式保存**回写代码块（拖动不会误触发重渲染丢状态）。
+`finance-ficalc` is a what-if sandbox: parameters can be typed manually or pre-filled from real ledger data, fine-tuned with interactive sliders, then **explicitly saved** back into the code block (dragging never triggers accidental re-renders that lose your state).
 
-- **核心指标**：是否已财务自由、所需本金、本金缺口、预计达成年份、安全提取率、可持续年花费。
-- **三种提取策略**：恒定金额 / 固定比例 / 95% 法则（当前比例与去年提取额 95% 取较大者）。
-- **蒙特卡洛模拟**：成功率 + P10 / P50 / P90 分位走势，中位 / 最差 / 最佳期末值与本金耗尽次数。
-- **三层生命周期图**：净资产曲线（历史段基于真实记账 + 模拟段基于假设）+ 现金流柱状 + 关键事件层。
-- **人生事件驱动**：规划买房 / 生娃 / 结婚 / 横财 / 职业变动，每个事件可带一次性现金流、年支出变化、年储蓄变化、非生息资产变化、负债变化——「生个娃」对财务自由推迟几年，一拖滑块就知道。
-- 实际购买力口径（名义收益经真实收益率折算），波动率可调（0 = 确定性模拟）。
+- **Key metrics**: financially free or not, required principal, principal gap, projected years to FI, safe withdrawal rate, sustainable annual spend.
+- **Three withdrawal strategies**: fixed amount / fixed percentage / Rule 95 (max of current-ratio and 95% of last year's withdrawal).
+- **Monte Carlo simulation**: success rate + P10 / P50 / P90 percentile paths, median / worst / best end values and depletion count.
+- **Three-layer life-cycle chart**: net-worth curve (historical section from real books + projected section) + cash-flow bars + life-event layer.
+- **Life-event driven**: plan house purchase / child / marriage / windfall / career change; each event can carry one-off cash flow, annual spend delta, annual savings delta, fixed-asset delta, and liability delta — "how many years does having a kid push back FI?" drag a slider and find out.
+- Real-purchasing-power basis (nominal returns converted via real rate); adjustable volatility (0 = deterministic).
 
-### 6. 资产总览 —— 净资产，一眼见底
+### 6. Asset Overview — Net Worth at a Glance
 
-- **净资产（市值口径）** + 总资产 + 总负债 + 未实现 / 已实现损益，附资产配置占比。
-- **三种计价方式**：账面（流水累加）/ 市值（手动估值）/ 折旧（直线法，购买价、年限、残值可配）。
-- **逐卡估值**：在账本写一行 `custom "fb-valuation"`（或点「更新估值」弹窗），视图展示最新市值、涨跌、估值时间线、市值 vs 账面对照条；估值过期自动横幅提醒。
-- **对账提示**：校验「资产 − 负债」是否恒等于「权益 + 留存」，差额通常来自未声明类别的账户——记账漂移无处可藏。
+- **Net worth (market basis)** + total assets + total liabilities + unrealized / realized P&L, with allocation breakdown.
+- **Three valuation modes**: book (accumulated flows) / market (manual valuations) / depreciation (straight-line with purchase price, useful life, salvage value).
+- **Per-account valuations**: write a `custom "fb-valuation"` line in the ledger (or use the "Update valuation" modal) — the view shows latest value, change %, a valuation timeline, and market-vs-book comparison bars; stale valuations trigger a banner reminder.
+- **Reconciliation hint**: verifies "Assets − Liabilities ≡ Equity + retained earnings" — discrepancies usually come from undeclared accounts; book drift has nowhere to hide.
 
-### 7. 日常花费 + 贷款 —— 设一次，天天自动
+### 7. Recurring Expenses + Loans — Set It Once, Automated Forever
 
-**日常花费（V1）**：地铁通勤、订阅会员这类固定支出，设一次计划——每天 / 每工作日 / 每月第 N 日——插件每天自动生成待入账草稿：
+**Recurring expenses (V1)**: fixed outflows like metro commute or subscriptions — set the plan once (daily / weekdays / monthly on day N) and the plugin generates pending drafts every day:
 
-- 草稿**虚派生**、不落盘：打开笔记即实时计算「应发生 × 未入账 × 未跳过」，逾期自动补齐；点「入账」写入 2 腿分录，或「全部入账」一次清空，单笔可跳过、可仅本次改金额。
-- 入账后自动带 `plan:` / `plan-date:` 元数据，幂等不重复。
+- Drafts are **virtually derived**, never persisted: opening the note computes "due × unposted × not skipped" live, back-filling overdue ones; click "Post" to write a 2-leg entry, or "Post all" to clear; single occurrences can be skipped or amount-adjusted.
+- Posted entries carry `plan:` / `plan-date:` metadata — idempotent, no duplicates.
 
-**贷款（V2）**：房贷 / 车贷等分期还款：
+**Loans (V2)**: mortgage / auto loans:
 
-- **等额本息 / 等额本金 / 先息后本** 三种方式，每月或每季度一期；引擎逐期生成 3 腿分录（出资资产 / 负债 / 利息费用），本金利息拆分精确到分、尾差归末期。
-- **续算机制**：编辑贷款时设定「当前剩余本金」即可模拟**部分提前还本**，计划从下一未入账期按新本金续算，已入账期不动（账本真源）。
-- 弹窗内实时还款预览：首期本息拆分、总期数、总利息估算。
+- **Equal installment (annuity) / equal principal / interest-first** — monthly or quarterly; the engine generates a 3-leg entry per period (funding asset / liability / interest expense) with principal-interest splits rounded to the cent and the residual absorbed into the final period.
+- **Re-scheduling**: editing a loan lets you set an explicit "remaining principal" to simulate **partial early repayment**; the schedule re-computes from the next unposted period, posted periods untouched (the ledger is the source of truth).
+- Live repayment preview in the dialog: first-period split, total periods, estimated total interest.
 
-### 8. 中英双语 & 纯文本数据 & 跨插件共存
+### 8. Bilingual, Plain-Text Data, and Cross-Plugin Coexistence
 
-- 界面随设置切换 中文 / English，切换即整体重渲染，所有已挂载的 finance 块干净无残留。
-- 所有数据存于 vault 内的纯文本（Markdown + `finance-config.json` 一个文件），无私有二进制格式，可进 Git、随手备份、随时手改。
-- 遵循 `obsidian-block-provider` 跨插件契约：与其他 block 插件共存时，「插入代码块」命令由首个注册的插件宿主，其余插件动态合并展示，互不写死依赖。
-
----
-
-## 📦 安装
-
-### 方式一：BRAT（推荐，支持自动更新）
-
-1. 在 Obsidian 社区插件市场安装 **BRAT**。
-2. 打开 BRAT 设置 → `Add a beta plugin`，填入本仓库地址。
-3. 在「社区插件」中启用 **财务块 Finance Block**。
-
-### 方式二：手动安装
-
-1. 从 Releases 或仓库根目录下载 `main.js`、`manifest.json` 与 `styles.css`。
-2. 把它们放进你的 vault：`<vault>/.obsidian/plugins/finance-block/`。
-3. 在「社区插件」中启用本插件。
-
-> 首次启动即写好默认配置（中文本土账户词表与分类），可直接开始记账，无需手动初始化。
+- Switch between 中文 / English anytime — everything re-renders instantly, cleanly, no residue.
+- All data lives as plain text in your vault (Markdown + a single `finance-config.json`), no private binary formats — git-able, back-up-able, hand-editable.
+- Follows the `obsidian-block-provider` cross-plugin contract: when other block plugins coexist, the generic "Insert code block" command is hosted by the first plugin to register; the rest merge in dynamically with no hard-coded dependencies.
 
 ---
 
-## 🚀 快速上手
+## 📦 Installation
 
-启用插件后：
+### Option 1: BRAT (recommended, auto-update)
 
-- 点击左侧栏 **💰 图标**，或命令面板（`Ctrl/Cmd + P`）搜索「记一笔」，选账户、填正数金额、提交——**无需懂借贷记账法**。
-- 想回看账目：在笔记里写一个 `finance-log` 代码块（见下），或直接粘贴账本中复制的 `^t-` 块引用精确查询单笔。
-- 想规划自由：写一个 `finance-ficalc` 代码块，自动从记账实况预填本金 / 年花费 / 年储蓄，拖滑块看「何时自由」。
-- 想定义自己的体系：打开设置 → 对应的「管理」弹窗，配置账户 / 交易类型 / 归属 / 币种汇率 / 预算 / 人生事件。
+1. Install **BRAT** from the Obsidian community plugin market.
+2. Open BRAT settings → `Add a beta plugin`, paste this repository's URL.
+3. Enable **Finance Block** under Community plugins.
+
+### Option 2: Manual install
+
+1. Download `main.js`, `manifest.json` and `styles.css` from Releases or the repo root.
+2. Place them into your vault: `<vault>/.obsidian/plugins/finance-block/`.
+3. Enable the plugin under Community plugins.
+
+> First launch seeds sensible defaults (Chinese-localized account vocabulary and categories) — start bookkeeping right away, no manual setup required.
 
 ---
 
-## 📝 代码块（Code Blocks）
+## 🚀 Quick Start
 
-插件接管以下七种围栏代码块的渲染，直接在笔记里写即可。
+After enabling the plugin:
 
-### `fin-beancount` —— 复式记账分录（数据真源）
+- Click the **💰 ribbon icon**, or run "Record transaction" from the command palette (`Ctrl/Cmd + P`). Pick accounts, enter positive amounts, submit — **no bookkeeping knowledge needed**.
+- To review: write a `finance-log` code block (below), or paste a copied `^t-` block reference for an exact single-entry lookup.
+- To plan freedom: write a `finance-ficalc` code block — it auto-prefills principal / annual spend / savings from your real books; drag sliders to see "when am I free?"
+- To define your own system: open the corresponding "Manager" dialog in settings to configure accounts / transaction types / owners / currencies / budgets / life events.
 
-记录一笔复式收支，N 腿动态录入 + 零和校验 + 草稿/入账双态。也可通过「记一笔」命令直接入账，无需手写本块。
+---
+
+## 📝 Code Blocks
+
+The plugin takes over rendering for the following seven fenced code blocks — just write them in a note.
+
+### `fin-beancount` — Double-entry ledger (source of truth)
+
+Record one double-entry transaction with N-leg dynamic editing, zero-sum validation, and draft/posted states. You can also use the "Record transaction" command to post directly without writing this block by hand.
 
 ````markdown
 ```fin-beancount
-2026-08-03 * 午餐 牛肉面
-  费用:餐饮  3500
-  银行卡   -3500
+2026-08-03 * Lunch beef noodles
+  Expense:Food  3500
+  Bank-Card   -3500
 ```
 ````
 
-### `finance-log` —— 流水视图
+### `finance-log` — Transaction log
 
-倒序展示交易流水，多维筛选。**参数全部选填**——留空即用默认（起始日=今天、天数=30、其余不筛）。
+Reverse-chronological feed with multi-dimensional filters. **All parameters optional** — leave empty for defaults (start = today, days = 30, no other filters).
 
-| 参数 | 说明 | 默认 |
-|------|------|------|
-| `date` | 起始日期，从哪天开始往前查 | 今天 |
-| `day` | 往前数 N 天（1=只看起始日当天；0=不限天数） | 30 |
-| `amount` | 金额绝对值筛选，单位元（如 `>100`、`100-200`） | — |
-| `account` | 按账户筛选（任一分录命中即算） | 全部 |
-| `type` | 按交易类型筛选 | 全部 |
-| `owner` | 按归属维度筛选 | 全部 |
-| `id` | 块引用 ID 精确查询（多个用 `;` 分隔，填了忽略日期） | — |
+| Param | Description | Default |
+|-------|-------------|---------|
+| `date` | Start date, look back from this day | today |
+| `day` | Look back N days (1 = only that day; 0 = unlimited) | 30 |
+| `amount` | Filter by absolute amount, in yuan (e.g. `>100`, `100-200`) | — |
+| `account` | Filter by account (any leg matches) | all |
+| `type` | Filter by transaction type | all |
+| `owner` | Filter by owner | all |
+| `id` | Exact lookup by block-ref ID (`;`-separated; overrides the date window) | — |
 
 ````markdown
 ```finance-log
-type: 餐饮
+type: Food
 day: 31
 ```
 ````
 
-### `finance-ficalc` —— 现金流模拟器
+### `finance-ficalc` — Cash-flow simulator
 
-投影长期资产与现金流，回答「何时财务自由」。参数全部选填，留空走块内默认或配置：
+Projects assets and cash flow long-term and answers "when am I financially free?" All parameters optional — leave empty for block defaults or config:
 
-| 参数 | 说明 | 默认 |
-|------|------|------|
-| `rate` | 年化收益率 % | 4 |
-| `age` / `retireAge` | 当前年龄 / 退休年龄 | 30 / 60 |
-| `startAge` | 图表 x 轴起点（早于当前年龄时从记账提取历史净资产） | = age |
-| `principal` / `spend` / `save` | 生息本金 / 年花费 / 年净储蓄（万） | 配置或自动预填 |
-| `infl` / `vol` | 通胀率 % / 收益波动率 %（0=确定性模拟） | 2 / 12 |
-| `years` | 退休后预测年数 | 自动至 95 岁 |
-| `mode` | 提取策略：`fixed` / `percent` / `rule95` | 配置 |
-| `incomeGrowth` / `cashRate` / `bufferMonths` | 储蓄年增速 / 现金收益率 / 应急金月数 | 3 / 1.5 / 6 |
+| Param | Description | Default |
+|-------|-------------|---------|
+| `rate` | Annual return % | 4 |
+| `age` / `retireAge` | Current age / retirement age | 30 / 60 |
+| `startAge` | Chart x-axis start (earlier than age pulls historical net worth from your books) | = age |
+| `principal` / `spend` / `save` | Earning principal / annual spend / annual savings (10k) | config or auto-filled |
+| `infl` / `vol` | Inflation % / return volatility % (0 = deterministic) | 2 / 12 |
+| `years` | Years to project after retirement | auto to age 95 |
+| `mode` | Withdrawal strategy: `fixed` / `percent` / `rule95` | config |
+| `incomeGrowth` / `cashRate` / `bufferMonths` | Savings growth / cash yield / emergency fund months | 3 / 1.5 / 6 |
 
 ````markdown
 ```finance-ficalc
@@ -198,29 +198,29 @@ retireAge: 55
 ```
 ````
 
-### `finance-budget` —— 预算执行
+### `finance-budget` — Budget tracker
 
-按分类展示预算执行率与达成状态（预算计划在设置 → 预算管理配置）。
+Shows budget execution rate and status per category (plans configured in Settings → Budgets).
 
-| 参数 | 说明 |
-|------|------|
-| `type` | 按交易类型筛选预算计划（留空显示全部） |
+| Param | Description |
+|-------|-------------|
+| `type` | Filter budget plans by transaction type (empty = all) |
 
 ````markdown
 ```finance-budget
 ```
 ````
 
-### `finance-heatmap` —— 收支热力图
+### `finance-heatmap` — Income/expense heatmap
 
-收支双向热力（绿=净收入、红=净支出），总览日历 + 分类矩阵双视角。
+Dual-direction heatmap (green = net income, red = net spending), calendar overview + category matrix.
 
-| 参数 | 说明 | 默认 |
-|------|------|------|
-| `day` | 显示最近 N 天（7–365） | 182 |
-| `view` | `calendar`（总览日历）/ `matrix`（分类矩阵） | `calendar` |
-| `gran` | 矩阵列粒度：`week` / `month`（仅矩阵生效） | `week` |
-| `category` | 按分类筛选 | 全部 |
+| Param | Description | Default |
+|-------|-------------|---------|
+| `day` | Show the last N days (7–365) | 182 |
+| `view` | `calendar` (overview) / `matrix` (category matrix) | `calendar` |
+| `gran` | Matrix column granularity: `week` / `month` (matrix only) | `week` |
+| `category` | Filter by category | all |
 
 ````markdown
 ```finance-heatmap
@@ -229,23 +229,23 @@ view: matrix
 ```
 ````
 
-### `finance-assets` —— 资产总览
+### `finance-assets` — Asset overview
 
-净资产（市值口径）+ 资产结构 + 逐卡估值 + 负债。
+Net worth (market basis) + asset structure + per-account valuation + liabilities.
 
-| 参数 | 说明 | 默认 |
-|------|------|------|
-| `owner` | 按归属筛选账户 | 全部 |
-| `group` | `class`（资产/负债分组）/ `prefix`（账户前缀分组） | `class` |
+| Param | Description | Default |
+|-------|-------------|---------|
+| `owner` | Filter accounts by owner | all |
+| `group` | `class` (asset/liability) / `prefix` (account prefix) | `class` |
 
 ````markdown
 ```finance-assets
 ```
 ````
 
-### `finance-recurring` —— 日常花费 + 贷款
+### `finance-recurring` — Recurring expenses + Loans
 
-设一次计划，每天自动出待入账草稿；贷款按计划生成 3 腿分录。**无参数**——界面（今日待入账 / 我的计划 / 我的贷款）全部由配置 + 账本实时派生。
+Set a plan once, get pending drafts daily; loans generate 3-leg entries per schedule. **No parameters** — the UI (Due today / My plans / My loans) derives entirely from config + ledger.
 
 ````markdown
 ```finance-recurring
@@ -254,60 +254,60 @@ view: matrix
 
 ---
 
-## ⚙️ 设置与数据管理
+## ⚙️ Settings & Data
 
-在设置页（`Ctrl/Cmd + ,` → Finance Block）可配置：
+In the settings tab (`Ctrl/Cmd + ,` → Finance Block) you can configure:
 
-- **数据文件**：账本路径（默认 `账本/账本.md`）、`finance-config.json` 路径（默认 vault 根目录）；外部编辑配置自动热重载。
-- **管理弹窗**（均支持拖拽排序）：
-  - **账户**：金融账户，可设图标、归属、计价方式（账面 / 市值 / 折旧）、折旧参数、现金流角色（生息增长 / 现金类 / 非生息资产 / 出租房）。
-  - **交易类型**：收支分类标签，可声明方向与自定义字段。
-  - **归属维度**：自己 / 家庭 / 自定义，可设缺省。
-  - **币种与汇率**：多币种，汇率相对默认币种换算，切换默认币种自动重折算。
-  - **预算**：按分类设定支出上限与周期。
-  - **人生事件**：买房 / 生娃 等节点，全局共享、驱动现金流模拟器。
-  - **存档**：查看 / 移出汇总结转归档的旧账本。
-- **待入账筛查**（默认关）：扫描指定文件夹中笔记里的草稿块，供流水视图区分草稿；关闭时启动零全库扫描、只读账本。
-- **语言**：中文 / English，切换即时生效并整体重渲染。
+- **Data files**: ledger path (default `账本/账本.md`), `finance-config.json` path (default vault root); external config edits hot-reload automatically.
+- **Manager dialogs** (drag-to-reorder supported):
+  - **Accounts**: financial accounts with icon, owner, valuation mode (book / market / depreciation), depreciation params, cash-flow role (growth / cash / fixed / rental).
+  - **Transaction types**: income/expense category tags with optional direction and custom fields.
+  - **Owners**: 自己 / 家庭 / custom, configurable default.
+  - **Currencies & FX**: multi-currency, rates relative to the base currency, switching the base auto-rebases all rates.
+  - **Budgets**: spending caps and periods per category.
+  - **Life events**: house / child / etc. — global, shared by all simulators.
+  - **Archive**: view / remove rolled-over legacy ledgers.
+- **Draft scan** (off by default): scans notes in selected folders for unposted draft blocks so the log can flag them; when off, startup skips vault-wide scanning and only reads the ledger.
+- **Language**: 中文 / English, switched live with a full re-render.
 
-### 数据存储位置
+### Data storage
 
-| 文件 | 内容 |
-|------|------|
-| `账本/账本.md` | 所有交易分录（fin-beancount 代码块，可双链、可进 Git） |
-| `finance-config.json` | 配置：账户、交易类型、归属、币种、预算、人生事件、日常计划、贷款 |
+| File | Contents |
+|------|----------|
+| `账本/账本.md` | All transactions (fin-beancount code blocks; linkable, git-able) |
+| `finance-config.json` | Config: accounts, types, owners, currencies, budgets, life events, recurring plans, loans |
 
-两套数据都位于 vault 内（路径均可设置），均为纯文本。插件在 vault 内**只生成这一个配置 JSON**，交易索引为纯内存、启动全量扫描重建，不落盘。
+Both live inside the vault (paths configurable), both plain text. The plugin generates **exactly one** config JSON; the transaction index is in-memory only — rebuilt by a full scan at startup, never written to disk.
 
 ---
 
-## 🔧 开发
+## 🔧 Development
 
 ```bash
-# 安装依赖
+# Install dependencies
 npm install
 
-# 开发模式（监听改动）
+# Watch mode (rebuild on change)
 npm run dev
 
-# 生产构建（输出到 版本/）
+# Production build (output to 版本/)
 npm run build
 
-# 运行测试（vitest + jsdom，90+ 用例）
+# Run tests (vitest + jsdom, 90+ cases)
 npm test
 
-# 类型校验
+# Type check
 npx tsc --noEmit
 ```
 
-### 技术栈
+### Tech stack
 
-- TypeScript + [esbuild](https://esbuild.github.io/)（打包）
-- [Vitest](https://vitest.dev/) + jsdom（单元测试，fiCalc / 贷款 / 日常花费 / 汇率 / 解析器 / 索引器全为纯函数、可单测）
+- TypeScript + [esbuild](https://esbuild.github.io/) (bundler)
+- [Vitest](https://vitest.dev/) + jsdom (unit tests — fiCalc / loan / recurring / fx / parser / indexer are all pure functions, fully testable)
 - Obsidian API
 
 ---
 
-## 📄 许可证
+## 📄 License
 
-MIT —— 可自由使用、修改与分发。
+MIT — free to use, modify, and distribute.
