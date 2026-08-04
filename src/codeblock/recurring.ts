@@ -267,7 +267,7 @@ function editAmount(d: RecurringDraft, deps: RecurringRenderDeps, rerender: () =
     attr: { step: '0.01', min: '0', inputmode: 'decimal' },
   });
   input.value = String(((amountOverrides.get(`${d.plan.id}:${d.date}`) ?? d.plan.amount) / 100));
-  input.style.width = '100%';
+  input.setCssStyles({ width: '100%' });
   const row = modal.contentEl.createDiv({ cls: 'finance-btn-row' });
   const cancel = row.createEl('button', { text: t('recurring.modal.cancel'), cls: 'mod-muted' });
   cancel.addEventListener('click', () => modal.close());

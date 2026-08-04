@@ -42,6 +42,7 @@ import {
 import { t } from '../i18n';
 import { BLOCK_ICONS, ICON_CARET, setSvg } from './icons';
 import { localDateString } from '../util/date';
+import { setHtml } from '../util/dom';
 
 // ─── 参数解析 ───────────────────────────────────────────────────
 
@@ -509,8 +510,7 @@ function renderReconciliation(
 
   const bar = parent.createDiv({ cls: 'as-recon' });
   const icon = bar.createSpan({ cls: 'as-recon-icon' });
-  icon.innerHTML =
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+  setSvg(icon, '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>');
 
   const body = bar.createDiv({ cls: 'as-recon-body' });
   const msgs: string[] = [];
@@ -712,8 +712,7 @@ function valuationBtn(
     cls: 'as-icon-btn',
     attr: { title: t('assets.updateValuation'), 'aria-label': t('assets.updateValuation') },
   });
-  btn.innerHTML =
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+  setSvg(btn, '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>');
   btn.addEventListener('click', () => openValuationModal(account));
   return btn;
 }
@@ -923,13 +922,15 @@ function renderTrendSection(parent: HTMLElement, ctx: TrendCtx): void {
 
     // SVG 折线 + 面积（数据全部为数值，无用户文本注入；字符串拼装与 buildSpark 模式一致）
     const svgWrap = body.createDiv({ cls: 'atrend-chart-wrap' });
-    svgWrap.innerHTML =
+    setHtml(
+      svgWrap,
       `<svg class="atrend-chart" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none">` +
-      `<path class="atrend-area" d="${area}"/>` +
-      `<path class="atrend-line ${upCls}" d="${line}"/>` +
-      `<circle class="atrend-dot" cx="${x(0).toFixed(1)}" cy="${y(firstV).toFixed(1)}" r="3"/>` +
-      `<circle class="atrend-dot is-end ${upCls}" cx="${x(pts.length - 1).toFixed(1)}" cy="${y(lastV).toFixed(1)}" r="3.5"/>` +
-      `</svg>`;
+        `<path class="atrend-area" d="${area}"/>` +
+        `<path class="atrend-line ${upCls}" d="${line}"/>` +
+        `<circle class="atrend-dot" cx="${x(0).toFixed(1)}" cy="${y(firstV).toFixed(1)}" r="3"/>` +
+        `<circle class="atrend-dot is-end ${upCls}" cx="${x(pts.length - 1).toFixed(1)}" cy="${y(lastV).toFixed(1)}" r="3.5"/>` +
+        `</svg>`,
+    );
 
     // 首末日期标注
     const labels = body.createDiv({ cls: 'atrend-labels' });

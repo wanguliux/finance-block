@@ -31,6 +31,7 @@ import { resolveAccountClass } from '../util/ledgerView';
 import { localDateString } from '../util/date';
 import { t } from '../i18n';
 import { BLOCK_ICONS, setSvg } from './icons';
+import { setHtml, appendHtml } from '../util/dom';
 
 /* ────────────────────────────────────────────────────────────
  *  参数解析
@@ -671,7 +672,7 @@ export function renderHeatmap(
       const nm = th.createDiv({ cls: 'nm' });
       nm.createSpan({ cls: 'dot' }).style.backgroundColor = catColor(r.cat);
       nm.createSpan({ text: r.cat });
-      if (dirBadge) nm.insertAdjacentHTML('beforeend', dirBadge);
+      if (dirBadge) appendHtml(nm, dirBadge);
       const tt = th.createDiv({ cls: 'tt' });
       tt.createSpan({ cls: 'sum', text: fmtSigned(r.total, symbol) });
       const shareEl = tt.createSpan({ cls: 'hm-share' });
@@ -698,10 +699,10 @@ export function renderHeatmap(
       const v = lineRows.reduce((s, r) => s + r.nets[i], 0);
       const td = ftr.createEl('td', { cls: 'hm-col-total' });
       if (v > 0) {
-        td.style.color = 'var(--fb-green)';
+        td.setCssStyles({ color: 'var(--fb-green)' });
         td.setText('+' + fmtAmount(v, '').replace('¥', ''));
       } else if (v < 0) {
-        td.style.color = 'var(--fb-red)';
+        td.setCssStyles({ color: 'var(--fb-red)' });
         td.setText(fmtAmount(-v, '').replace('¥', ''));
       }
     });
@@ -732,7 +733,7 @@ export function renderHeatmap(
 
   /* ── 悬浮提示 ── */
   function showTip(html: string, x: number, y: number): void {
-    tipEl.innerHTML = html;
+    setHtml(tipEl, html);
     tipEl.removeClass('hidden');
     const r = tipEl.getBoundingClientRect();
     tipEl.style.left = `${Math.min(x + 14, window.innerWidth - r.width - 10)}px`;
@@ -809,9 +810,9 @@ export function renderHeatmap(
       const htr = table.createEl('tr');
       htr.createEl('th', { text: t('heatmap.detail.colCat') });
       const thAmt = htr.createEl('th', { text: t('heatmap.detail.colAmount') });
-      thAmt.style.textAlign = 'right';
+      thAmt.setCssStyles({ textAlign: 'right' });
       const thCnt = htr.createEl('th', { text: t('heatmap.detail.colCount') });
-      thCnt.style.textAlign = 'right';
+      thCnt.setCssStyles({ textAlign: 'right' });
       let net = 0;
       let cnt = 0;
       for (const r of rows) {
@@ -823,20 +824,20 @@ export function renderHeatmap(
         dot.style.backgroundColor = catColor(r.cat);
         tdCat.createSpan({ text: r.cat });
         const tdAmt = tr.createEl('td', { cls: `amt ${r.net >= 0 ? 'in' : 'out'}` });
-        tdAmt.style.textAlign = 'right';
+        tdAmt.setCssStyles({ textAlign: 'right' });
         tdAmt.setText((r.net > 0 ? '+' : '') + fmtAmount(Math.abs(r.net), symbol));
         const tdCnt = tr.createEl('td');
-        tdCnt.style.textAlign = 'right';
-        tdCnt.style.color = 'var(--fb-text-faint)';
+        tdCnt.setCssStyles({ textAlign: 'right' });
+        tdCnt.setCssStyles({ color: 'var(--fb-text-faint)' });
         tdCnt.setText(String(r.count));
       }
       const sum = table.createEl('tr', { cls: 'sum' });
       sum.createEl('td', { text: t('heatmap.detail.sum') });
       const sumAmt = sum.createEl('td', { cls: `amt ${net >= 0 ? 'in' : 'out'}` });
-      sumAmt.style.textAlign = 'right';
+      sumAmt.setCssStyles({ textAlign: 'right' });
       sumAmt.setText(fmtSigned(net, symbol));
       const sumCnt = sum.createEl('td');
-      sumCnt.style.textAlign = 'right';
+      sumCnt.setCssStyles({ textAlign: 'right' });
       sumCnt.setText(t('heatmap.detail.count', { n: String(cnt) }));
     }
     detail.addClass('open');

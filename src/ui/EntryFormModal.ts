@@ -320,7 +320,7 @@ export abstract class EntryFormModal extends Modal {
         if (p.placeholder) singleNum.placeholder = p.placeholder;
 
         const betweenWrap = control.createSpan({ cls: 'amount-num' });
-        betweenWrap.style.display = 'none';
+        betweenWrap.setCssStyles({ display: 'none' });
         const numA = betweenWrap.createEl('input', { type: 'number', cls: 'finance-input' });
         numA.setAttribute('step', '0.01');
         numA.setAttribute('inputmode', 'decimal');

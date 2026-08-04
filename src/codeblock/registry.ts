@@ -30,6 +30,7 @@ import {
   weekStart,
 } from '../util/ledgerView';
 import { copyText } from '../util/clipboard';
+import { setHtml, appendHtml } from '../util/dom';
 import { auditTransaction, type TxnWarning } from '../engine/audit';
 import { BLOCK_ICONS, ICON_COPY, ICON_CHECK, ICON_ARROW, ICON_CARET, setSvg } from './icons';
 import type { FinanceConfig, Transaction, Valuation, AccountDef, AmountInCents, LoanDef, LoanPeriod, RecurringPlanDef } from '../types';
@@ -394,15 +395,15 @@ function renderValCard(parent: HTMLElement, val: Valuation, ctx: ValRenderCtx, o
   const amt = body.createDiv({ cls: 'bc-val-amt' });
   amt.textContent = fmtYuan(val.amount);
   if (val.currency) amt.createSpan({ cls: 'cur', text: val.currency });
-  body.insertAdjacentHTML('beforeend', deltaHtml);
-  if (vsHtml) body.insertAdjacentHTML('beforeend', vsHtml);
+  appendHtml(body, deltaHtml);
+  if (vsHtml) appendHtml(body, vsHtml);
   const spark = buildSpark(val.account, ctx.allVals, opts.isPosted ? undefined : val);
-  if (spark) body.insertAdjacentHTML('beforeend', spark);
+  if (spark) appendHtml(body, spark);
 
-  if (bookHtml) card.insertAdjacentHTML('beforeend', bookHtml);
+  if (bookHtml) appendHtml(card, bookHtml);
 
   const meta = card.createDiv({ cls: 'bc-val-meta' });
-  meta.innerHTML = tags.join('');
+  setHtml(meta, tags.join(''));
   if (val.comment) meta.createDiv({ cls: 'bc-val-note', text: `; ${val.comment}` });
 }
 
@@ -499,12 +500,14 @@ function renderValuationsPosted(
       const gh = g.createDiv({ cls: 'bc-group-head' });
       gh.createSpan({ cls: 'bc-group-label', text: `${icon} ${a}` });
       const sum = gh.createSpan({ cls: 'bc-group-sum' });
-      sum.innerHTML =
+      setHtml(
+        sum,
         `<span class="gc">${t('valuation.group.latest')} <b>${fmtYuan(latest.amount)}</b></span>` +
-        `<span class="bc-val-delta ${cls}" style="font-size:.92em">${total > 0 ? '▲' : '▼'} ${totalPct >= 0 ? '+' : ''}${totalPct.toFixed(1)}%</span>` +
-        `<span class="gc">${t('valuation.unrealized', { amount: fmtCents(pnl) })}</span>` +
-        `<span class="gc">· ${t('valuation.group.times', { n: String(arr.length) })} · ${t('valuation.group.daysAgo', { n: String(gap) })}</span>` +
-        (isStale ? `<span class="bc-meta-tag warn">${t('valuation.group.stale')}</span>` : '');
+          `<span class="bc-val-delta ${cls}" style="font-size:.92em">${total > 0 ? '▲' : '▼'} ${totalPct >= 0 ? '+' : ''}${totalPct.toFixed(1)}%</span>` +
+          `<span class="gc">${t('valuation.unrealized', { amount: fmtCents(pnl) })}</span>` +
+          `<span class="gc">· ${t('valuation.group.times', { n: String(arr.length) })} · ${t('valuation.group.daysAgo', { n: String(gap) })}</span>` +
+          (isStale ? `<span class="bc-meta-tag warn">${t('valuation.group.stale')}</span>` : ''),
+      );
       const caret = gh.createSpan({ cls: 'bc-group-caret' });
       setSvg(caret, ICON_CARET);
       const gb = g.createDiv({ cls: 'bc-group-body' });
@@ -523,7 +526,7 @@ function renderValuationsPosted(
         row.createSpan({ cls: 'dot' });
         row.createSpan({ cls: 'd', text: v.date });
         row.createSpan({ cls: 'v', text: fmtYuan(v.amount) });
-        row.insertAdjacentHTML('beforeend', dl);
+        appendHtml(row, dl);
         row.createSpan({ cls: 'g' });
         if (v.comment) row.createSpan({ cls: 'cmt', text: v.comment });
         if (v.blockRef) row.createSpan({ cls: 'ref', text: v.blockRef });
@@ -957,11 +960,13 @@ function renderPostedWithGrouping(
       const head = group.createDiv({ cls: 'bc-group-head' });
       head.createSpan({ cls: 'bc-group-label', text: groupLabel(k) });
       const sum = head.createSpan({ cls: 'bc-group-sum' });
-      sum.innerHTML =
+      setHtml(
+        sum,
         `<span class="gc">${t('beancount.summary.income')} <b class="pos">${fmtCents(s.income)}</b></span>` +
-        `<span class="gc">${t('beancount.summary.expense')} <b class="neg">${fmtCents(-s.expense)}</b></span>` +
-        `<span class="gc">${t('beancount.summary.net')} <b class="${s.net >= 0 ? 'pos' : 'neg'}">${fmtCents(s.net)}</b></span>` +
-        `<span class="gc">· ${t('beancount.group.count', { n: String(arr.length) })}</span>`;
+          `<span class="gc">${t('beancount.summary.expense')} <b class="neg">${fmtCents(-s.expense)}</b></span>` +
+          `<span class="gc">${t('beancount.summary.net')} <b class="${s.net >= 0 ? 'pos' : 'neg'}">${fmtCents(s.net)}</b></span>` +
+          `<span class="gc">· ${t('beancount.group.count', { n: String(arr.length) })}</span>`,
+      );
       const caret = head.createSpan({ cls: 'bc-group-caret' });
       setSvg(caret, ICON_CARET);
       const body = group.createDiv({ cls: 'bc-group-body' });

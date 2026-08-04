@@ -18,9 +18,7 @@ export async function copyText(text: string): Promise<boolean> {
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.top = '-9999px';
-    ta.style.opacity = '0';
+    ta.setCssStyles({ position: 'fixed', top: '-9999px', opacity: '0' });
     document.body.appendChild(ta);
     ta.focus();
     ta.select();

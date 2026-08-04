@@ -6,6 +6,7 @@ import { localDateString } from '../util/date';
 import { calculateBalances } from '../ledger/closing';
 import { generateValuationRefId } from '../ledger/poster';
 import { appendEntryToLedgerBlock } from '../ledger/ledgerFile';
+import { setHtml } from '../util/dom';
 
 const VAL_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 4 5-8 4 5"/><path d="M3 21h18"/></svg>';
@@ -85,7 +86,7 @@ export class UpdateValuationModal extends Modal {
     // 标题 + 青色图标
     const head = contentEl.createEl('h2');
     const icon = head.createSpan({ cls: 'fb-icon is-val' });
-    icon.innerHTML = VAL_ICON;
+    setHtml(icon, VAL_ICON);
     head.createSpan({ text: t('modal.valuation.title') });
     contentEl.createEl('div', {
       cls: 'fb-subhead',
@@ -309,7 +310,7 @@ export class UpdateValuationModal extends Modal {
       this.pvDelta.setText('—');
       this.pvPnl.className = 'v';
       this.pvPnl.setText('—');
-      this.pvLine.innerHTML = `${t('modal.valuation.pv.willWrite')} <b>—</b>`;
+      setHtml(this.pvLine, `${t('modal.valuation.pv.willWrite')} <b>—</b>`);
       return;
     }
 
@@ -332,7 +333,7 @@ export class UpdateValuationModal extends Modal {
     this.pvPnl.setText(`${pnl >= 0 ? '+' : ''}${fmtYuan(pnl)}`);
 
     // 预览行
-    this.pvLine.innerHTML = `${t('modal.valuation.pv.willWrite')} <b>${line.replace(/</g, '&lt;')}</b>`;
+    setHtml(this.pvLine, `${t('modal.valuation.pv.willWrite')} <b>${line.replace(/</g, '&lt;')}</b>`);
   }
 
   private async onSave(): Promise<void> {

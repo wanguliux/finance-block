@@ -34,6 +34,7 @@ import { t } from '../i18n';
 import { todayLocal, daysBefore, isDateStr } from '../util/date';
 import { resolveAccountClass, dirOfPost } from '../util/ledgerView';
 import { BLOCK_ICONS, setSvg } from './icons';
+import { setHtml } from '../util/dom';
 
 /** 金额区间（闭区间，单位：分）。严格比较在解析阶段已折算成闭区间边界。 */
 export interface AmountRange {
@@ -543,12 +544,14 @@ export function renderLog(
       expense += f.expense;
     }
     const net = income - expense;
-    summary.innerHTML =
+    setHtml(
+      summary,
       `<span class="s-item">${t('log.summary.count', { n: String(visible.length) })}</span>` +
-      `<span class="s-item">${t('log.summary.income')} <b class="pos">${fmtAmount(income)}</b></span>` +
-      `<span class="s-item">${t('log.summary.expense')} <b class="neg">${fmtAmount(-expense)}</b></span>` +
-      `<span class="s-item">${t('log.summary.net')} <b class="${net >= 0 ? 'pos' : 'neg'}">${fmtAmount(net)}</b></span>` +
-      (drafts ? `<span class="s-item" style="color:var(--text-faint)">${t('log.summary.draftNote', { n: String(drafts) })}</span>` : '');
+        `<span class="s-item">${t('log.summary.income')} <b class="pos">${fmtAmount(income)}</b></span>` +
+        `<span class="s-item">${t('log.summary.expense')} <b class="neg">${fmtAmount(-expense)}</b></span>` +
+        `<span class="s-item">${t('log.summary.net')} <b class="${net >= 0 ? 'pos' : 'neg'}">${fmtAmount(net)}</b></span>` +
+        (drafts ? `<span class="s-item" style="color:var(--text-faint)">${t('log.summary.draftNote', { n: String(drafts) })}</span>` : ''),
+    );
 
     rangePill.textContent = `${dayLabel} · ${t('log.summary.count', { n: String(visible.length) })}`;
   }

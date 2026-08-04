@@ -2,8 +2,10 @@
  * icons.ts —— 财务块各代码块的 SVG 图标 + 通用小图标
  *
  * 图标取自重设计原型，统一用 currentColor 描边，颜色由 `.fb-icon` 的 color 控制。
- * 直接返回 SVG 字符串，调用方通过 `el.innerHTML = ICONS.xxx` 注入。
+ * 直接返回 SVG 字符串，调用方通过 `setSvg(el, ICONS.xxx)` 注入（内部用 DOMParser，避开 innerHTML）。
  */
+
+import { setHtml } from '../util/dom';
 
 export const BLOCK_ICONS: Record<string, string> = {
   // fin-beancount：文档/分录
@@ -48,7 +50,7 @@ export const ICON_ARROW =
 export const ICON_CARET =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
 
-/** 把 SVG 字符串注入到元素（Obsidian createEl 不稳定支持 html 选项，故用 innerHTML） */
+/** 把 SVG 字符串注入到元素（用 DOMParser 解析，避免直接赋值 innerHTML） */
 export function setSvg(el: HTMLElement, svg: string): void {
-  el.innerHTML = svg;
+  setHtml(el, svg);
 }

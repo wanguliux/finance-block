@@ -1577,7 +1577,7 @@ function renderLifeCycle(
     const tip = e.note ? t('ficalc.lifecycle.eventTipNote') : t('ficalc.lifecycle.eventTipEdit');
     svgEl(g, 'title', {}).textContent = `${e.label} · ${e.age}${t('ficalc.unit.year')}\n${tip}`;
     if (onEventClick) g.addEventListener('click', () => onEventClick(e));
-    g.style.cursor = 'pointer';
+    g.setCssStyles({ cursor: 'pointer' });
   }
 
   // x 轴刻度
