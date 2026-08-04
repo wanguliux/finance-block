@@ -11,7 +11,8 @@
  *   liability 负债：抵减净资产
  *
  * 缺省推断（未显式设 cashflowRole 时）：按 valuation 智能推断——
- *   depreciation → fixed；market → growth；book/未设 → cash（保守低收益）。
+ *   market → growth；book/未设 → cash（保守低收益）。
+ *   （depreciation → fixed 的推断已随折旧派生一起废弃，2026-08-04）
  * 负债（class=liability）恒进负债桶。
  *
  * 应急金缓冲 = bufferMonths × 年支出 / 12（不增长）；现金桶超缓冲部分才并入生息本金。
@@ -69,7 +70,6 @@ type ResolvedRole = CashflowRole | 'liability';
 function resolveRole(def: AccountDef | undefined, cls: string | undefined): ResolvedRole {
   if (cls === 'liability') return 'liability';
   if (def?.cashflowRole) return def.cashflowRole;
-  if (def?.valuation === 'depreciation') return 'fixed';
   if (def?.valuation === 'market') return 'growth';
   // book / 未设置：保守视为现金类（低收益）
   return 'cash';
@@ -97,7 +97,13 @@ export function bucketAssets(
   const result = computeNetWorth(
     config.accounts,
     balances,
-    { valuations, staleDaysDefault, today: new Date(), fxRates, baseCurrency },
+    {
+      valuations,
+      staleDaysDefault,
+      today: new Date(),
+      fxRates,
+      baseCurrency,
+    },
     { flows: opts.flows, ownerFilter },
   );
 

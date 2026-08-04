@@ -5,14 +5,20 @@ import { t } from '../i18n';
 import { confirmWithModal } from './Confirm';
 import { PathSuggest } from './PathSuggest';
 import { currencySymbol, buildSymbolMap } from '../engine/fx';
+import { ageFromBirthday, todayLocal } from '../util/date';
 
 /*
  * LifeEventManagerModal —— "人生事件"弹窗（阶段三 事件模拟器）。
  *
- * 列出所有人生事件（名称 + 类型徽章 + 触发年龄 + 财务影响摘要），每条可「启用 / 编辑 / 删除」。
- * 点「新增事件」打开 LifeEventEditModal（名称 / 类型 / 年龄 / 五项财务影响 / 关联笔记）。
+ * 列出所有人生事件（名称 + 类型徽章 + 触发年龄/日期 + 财务影响摘要），每条可「启用 / 编辑 / 删除」。
+ * 点「新增事件」打开 LifeEventEditModal（名称 / 类型 / 年龄或日期 / 五项财务影响 / 关联笔记）。
  * 数据持久化在 vault 的 finance-config.json（FinanceConfig.lifeEvents）——
  * 人生事件是全局唯一真相（一个人只有一套人生规划），所有 finance-ficalc 块共享同一份。
+ *
+ * 触发模式（2026-08-04 扩展）：每个事件可选「按年龄」或「按具体日期」触发。
+ * 页顶「生日」设置项填了之后：
+ *   ① 当前年龄可从生日按今天自动推导（ficalc 块 age 参数可不填）；
+ *   ② 事件的触发年龄可由「触发日期 + 生日」自动推导（列表里直接显示岁数）。
  *
  * 事件按触发年龄升序展示，与生命周期图的时间轴顺序一致。
  * 「启用」开关允许临时关掉某个事件而不删除，便于做"有无此事件"的对比推演。
@@ -35,6 +41,8 @@ type ImpactKey = (typeof IMPACT_FIELDS)[number]['key'];
 export class LifeEventManagerModal extends Modal {
   private plugin: FinancePlugin;
   private listContainer!: HTMLDivElement;
+  /** 生日设置区容器（保存后原地重绘，避免重复堆积） */
+  private birthdayWrap!: HTMLDivElement;
   /** 弹窗关闭时回调，供 finance-ficalc 块在事件变更后重算刷新 */
   private onChanged?: () => void;
 
@@ -54,6 +62,14 @@ export class LifeEventManagerModal extends Modal {
 
     contentEl.createEl('h2', { text: t('modal.event.title') });
     contentEl.createEl('p', { text: t('modal.event.intro'), cls: 'fb-meta' });
+
+    // ── 生日设置（2026-08-04）：填了之后「当前年龄」与「事件岁数」都可自动推导 ──
+    this.birthdayWrap = contentEl.createDiv();
+    this.birthdayWrap.addClass('fb-field');
+    this.renderBirthdaySection();
+
+    // ── 生日设置（2026-08-04）：填了之后「当前年龄」与「事件岁数」都可自动推导 ──
+    this.renderBirthdaySection();
 
     const topToolbar = contentEl.createDiv();
     topToolbar.addClass('fb-btn-row');
@@ -107,7 +123,7 @@ export class LifeEventManagerModal extends Modal {
 
       const summary = this.impactSummary(ev, symbol);
       infoCol.createDiv({
-        text: `${t('modal.event.atAge', { n: String(ev.age) })}${summary ? ' · ' + summary : ''}`,
+        text: `${this.triggerLabel(ev)}${summary ? ' · ' + summary : ''}`,
         cls: 'fb-meta',
       });
 
@@ -156,6 +172,64 @@ export class LifeEventManagerModal extends Modal {
       this.onChanged?.();
     };
     editModal.open();
+  }
+
+  /** 生日设置区：日期输入 + 保存；设置了生日时显示「当前年龄 N 岁」徽章 */
+  private renderBirthdaySection(): void {
+    this.birthdayWrap.empty();
+
+    const labelRow = this.birthdayWrap.createDiv();
+    labelRow.addClass('fb-field-label-row');
+    labelRow.createEl('label', { text: t('modal.event.birthday') });
+    const birthday = this.plugin.config.birthday;
+    if (birthday) {
+      const derived = ageFromBirthday(birthday, todayLocal());
+      if (derived != null) {
+        const badge = labelRow.createSpan({ cls: 'fb-badge', text: t('modal.event.birthdayDerivedAge', { n: String(derived) }) });
+        void badge;
+      }
+    }
+
+    const input = this.birthdayWrap.createEl('input', { type: 'date', cls: 'fb-input' });
+    if (birthday) input.value = birthday;
+
+    const hint = this.birthdayWrap.createDiv();
+    hint.addClass('fb-hint');
+    hint.setText(t('modal.event.birthdayHint'));
+
+    const saveBtn = this.birthdayWrap.createEl('button', {
+      text: t('modal.event.birthdaySave'),
+      cls: 'fb-btn mod-cta',
+    });
+    saveBtn.addEventListener('click', () => {
+      const val = input.value.trim();
+      this.plugin.config.birthday = val || undefined;
+      void this.plugin.configManager.save()
+        .then(() => {
+          new Notice(t('modal.event.birthdaySaved'));
+          this.renderBirthdaySection();
+          this.renderEvents();
+          this.onChanged?.();
+        })
+        .catch((err) => {
+          console.error('[finance-block] save birthday failed:', err);
+          new Notice(t('common.saveFailed'));
+        });
+    });
+  }
+
+  /** 事件触发点文案：有日期显示「日期 · N 岁」，否则「N 岁」 */
+  private triggerLabel(ev: LifeEventDef): string {
+    const age = this.effectiveAge(ev);
+    if (ev.date) return `${ev.date} · ${t('modal.event.atAge', { n: String(age ?? ev.age) })}`;
+    return t('modal.event.atAge', { n: String(ev.age) });
+  }
+
+  /** 事件的生效年龄：设置了触发日期且有生日 → 由「日期 + 生日」推导；否则 null（用 age 字段） */
+  private effectiveAge(ev: LifeEventDef): number | null {
+    const birthday = this.plugin.config.birthday;
+    if (ev.date && birthday) return ageFromBirthday(birthday, ev.date);
+    return null;
   }
 
   private async toggle(id: string): Promise<void> {
@@ -215,6 +289,7 @@ class LifeEventEditModal extends Modal {
   private labelInput!: HTMLInputElement;
   private typeSelect!: HTMLSelectElement;
   private ageInput!: HTMLInputElement;
+  private dateInput!: HTMLInputElement;
   private enabledInput!: HTMLInputElement;
   private noteText!: TextComponent;
   private impactInputs = new Map<ImpactKey, HTMLInputElement>();
@@ -258,12 +333,18 @@ class LifeEventEditModal extends Modal {
       const opt = this.typeSelect.createEl('option', { text: t(`event.type.${ty}`), value: ty });
       if (editEvent && editEvent.type === ty) opt.selected = true;
     }
+    // 退休是特殊锁定类型：EVENT_TYPES 不含它，但编辑时下拉要能显示「退休」
+    if (this.isRetire) {
+      const opt = this.typeSelect.createEl('option', { text: t('event.type.retire'), value: 'retire' });
+      opt.selected = true;
+    }
     if (editEvent) this.typeSelect.value = editEvent.type;
     if (this.isRetire) {
       this.typeSelect.disabled = true;
     }
 
-    // 触发年龄
+    // 触发年龄（2026-08-04 反转语义：此处年龄 = 现金流模拟器的「退休年龄」默认值；
+    // 模拟器内可单独调整，不影响本事件）
     const ageField = contentEl.createDiv();
     ageField.addClass('fb-field');
     ageField.createEl('label', { text: t('modal.event.age') });
@@ -272,10 +353,38 @@ class LifeEventEditModal extends Modal {
     });
     if (editEvent) this.ageInput.value = String(editEvent.age);
     if (this.isRetire) {
-      this.ageInput.disabled = true;
       const ageHint = ageField.createDiv();
       ageHint.addClass('fb-meta');
       ageHint.setText(t('modal.event.retireAgeHint'));
+    }
+
+    // 触发日期（可选，2026-08-04）：设置了生日后，事件岁数由「日期 + 生日」自动推导
+    const dateField = contentEl.createDiv();
+    dateField.addClass('fb-field');
+    dateField.createEl('label', { text: t('modal.event.date') });
+    this.dateInput = dateField.createEl('input', { type: 'date', cls: 'fb-input' });
+    if (editEvent?.date) this.dateInput.value = editEvent.date;
+    dateField.createDiv({ text: t('modal.event.dateHint'), cls: 'fb-meta' });
+    const derivedAgeHint = dateField.createDiv();
+    derivedAgeHint.addClass('fb-meta');
+    // 生日存在 + 已填日期 → 实时推导岁数并回填年龄输入框
+    const syncDerivedAge = (): void => {
+      derivedAgeHint.setText('');
+      const birthday = this.plugin.config.birthday;
+      const d = this.dateInput.value;
+      if (!this.isRetire && d && birthday) {
+        const age = ageFromBirthday(birthday, d);
+        if (age != null) {
+          derivedAgeHint.setText(t('modal.event.dateDerivedAge', { n: String(age) }));
+          this.ageInput.value = String(age);
+        }
+      }
+    };
+    this.dateInput.addEventListener('change', syncDerivedAge);
+    syncDerivedAge();
+    if (this.isRetire) {
+      this.dateInput.disabled = true;
+      dateField.addClass('is-hidden');
     }
 
     // 退休事件没有财务影响字段（退休边界由「退休年龄」参数驱动），隐藏此分组
@@ -337,10 +446,8 @@ class LifeEventEditModal extends Modal {
     const label = this.labelInput.value.trim();
     if (!label) { new Notice(t('modal.event.labelRequired')); return; }
 
-    const age = this.isRetire
-      ? (this.plugin.config.lifeEvents.find((e) => e.id === this.editId)?.age ?? 60)
-      : parseInt(this.ageInput.value, 10);
-    if (!this.isRetire && (!Number.isFinite(age) || age < 0 || age > 120)) {
+    const age = parseInt(this.ageInput.value, 10);
+    if (!Number.isFinite(age) || age < 0 || age > 120) {
       new Notice(t('modal.event.ageRequired'));
       return;
     }
@@ -359,19 +466,21 @@ class LifeEventEditModal extends Modal {
     const note = this.noteText.getValue().trim() || undefined;
     const type = (this.typeSelect.value || 'custom') as LifeEventType;
     const enabled = this.enabledInput.checked;
+    // 触发日期（可选）：留空 = 按年龄触发；有值且设置了生日时 age 已被自动推导
+    const date = this.dateInput?.value.trim() || undefined;
 
     const events = this.plugin.config.lifeEvents;
     if (!this.editId) {
       events.push({
         id: `ev-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        label, type, age, enabled, note, ...impacts,
+        label, type, age, date, enabled, note, ...impacts,
       });
     } else {
       const target = events.find((e) => e.id === this.editId);
       if (target) {
         // 全量覆盖：先清掉旧的影响字段，再写入本次填的（避免清空输入后旧值残留）
         for (const f of IMPACT_FIELDS) delete target[f.key as ImpactKey];
-        Object.assign(target, { label, type, age, enabled, note, ...impacts });
+        Object.assign(target, { label, type, age, date, enabled, note, ...impacts });
       }
     }
 

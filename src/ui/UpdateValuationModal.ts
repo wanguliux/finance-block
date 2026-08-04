@@ -33,7 +33,7 @@ function fmtPct(pct: number): string {
  * 相比旧版的三处升级：
  *   1. 实时预览面板：上次估值 / 本次变化 / 账面余额 / 未实现损益，边填边看。
  *   2. 写入方式选择（默认「插入当前笔记（草稿）」）：与交易「先草稿后入账」心智一致。
- *   3. 账户下拉带计价方式徽标 + 提示：book / depreciation 账户给明确警示，避免沉默失败。
+ *   3. 账户下拉带计价方式徽标 + 提示：book 账户给明确警示，避免沉默失败。
  *   4. 快捷调整 chip：在上次估值基础上微调（房产类常见，不是从零填）。
  */
 export class UpdateValuationModal extends Modal {
@@ -217,9 +217,7 @@ export class UpdateValuationModal extends Modal {
     const m = method ?? 'book';
     return m === 'market'
       ? `[${t('valuation.kind.market')}]`
-      : m === 'depreciation'
-        ? `[${t('valuation.kind.depreciation')}]`
-        : `[${t('valuation.kind.book')}]`;
+      : `[${t('valuation.kind.book')}]`;
   }
 
   /** 当前选中的账户：锁定态用预选账户，否则取下拉值。 */
@@ -248,9 +246,6 @@ export class UpdateValuationModal extends Modal {
     if (method === 'book') {
       this.accountHint.className = 'm-hint warn';
       this.accountHint.setText(t('modal.valuation.hint.book'));
-    } else if (method === 'depreciation') {
-      this.accountHint.className = 'm-hint warn';
-      this.accountHint.setText(t('modal.valuation.hint.depreciation'));
     } else {
       const stale = def?.staleDays ?? this.plugin.config.defaultStaleDays;
       let s = t('modal.valuation.hint.market', { n: String(stale) });

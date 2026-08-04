@@ -1,17 +1,18 @@
 import { Modal, Notice } from 'obsidian';
 import type FinancePlugin from '../main';
-import type { AccountClass, AccountDef, DepreciationDef } from '../types';
+import type { AccountClass, AccountDef } from '../types';
 import { t, tClass } from '../i18n';
 import { confirmWithModal } from './Confirm';
 
 /*
  * AccountManagerModal —— "账户"管理弹窗。
  * 列出所有账户（含五大类徽章 + 图标），每条可「编辑 / 删除」。
- * 点「新增账户」打开 AccountEditModal（名称 / 类别 / 图标）。
+ * 点「新增账户」打开 AccountEditModal（名称 / 类别 / 图标 / 计价方式等）。
  * 数据持久化在 vault 的 finance-config.json（FinanceConfig.accounts）。
  *
- * 注意：账户名是交易 legs 中引用的身份（account: string）。
- * 因此编辑时名称只读，避免改名为已有交易造成悬空引用（与币种 code 只读一致）。
+ * 注意（2026-08-04 终版）：账户是「分类容器」，价值完全由账本流水驱动——
+ * 资产价值 = 交易累加（book）或估值行覆盖（market），无需任何金额设置。
+ * 账户名是交易 legs 中引用的身份（account: string），编辑时名称只读。
  */
 
 export class AccountManagerModal extends Modal {
@@ -96,12 +97,9 @@ export class AccountManagerModal extends Modal {
       const badge = titleRow.createSpan({ text: tClass(account.class) });
       badge.addClass('fb-badge');
 
-      // 计价方式徽章（仅非 book / 已设置时显示）
+      // 计价方式徽章（仅 market 已设置时显示）
       if (account.valuation && account.valuation !== 'book') {
-        const valuationKey = account.valuation === 'market'
-          ? 'assets.marketValue'
-          : 'assets.depreciationValue';
-        const valBadge = titleRow.createSpan({ text: t(valuationKey) });
+        const valBadge = titleRow.createSpan({ text: t('assets.marketValue') });
         valBadge.addClass('fb-badge');
       }
 
@@ -177,11 +175,6 @@ class AccountEditModal extends Modal {
   private cashflowRoleSelect!: HTMLSelectElement;
   private staleDaysInput!: HTMLInputElement;
   private staleDaysField!: HTMLDivElement;
-  private depSection!: HTMLDivElement;
-  private depPriceInput!: HTMLInputElement;
-  private depDateInput!: HTMLInputElement;
-  private depYearsInput!: HTMLInputElement;
-  private depSalvageInput!: HTMLInputElement;
 
   constructor(plugin: FinancePlugin, options: AccountEditModalOptions = {}) {
     super(plugin.app);
@@ -248,10 +241,9 @@ class AccountEditModal extends Modal {
     valuationField.createEl('label', { text: t('modal.accounts.valuation') });
     this.valuationSelect = valuationField.createEl('select', { cls: 'fb-input' });
     this.valuationSelect.createEl('option', { text: t('modal.accounts.valuationPlaceholder'), value: '' });
-    const valuationOptions: Array<{ value: 'book' | 'market' | 'depreciation'; label: string }> = [
+    const valuationOptions: Array<{ value: 'book' | 'market'; label: string }> = [
       { value: 'book', label: t('modal.accounts.valuation.book') },
       { value: 'market', label: t('modal.accounts.valuation.market') },
-      { value: 'depreciation', label: t('modal.accounts.valuation.depreciation') },
     ];
     for (const v of valuationOptions) {
       const opt = this.valuationSelect.createEl('option', { text: v.label, value: v.value });
@@ -276,7 +268,7 @@ class AccountEditModal extends Modal {
     }
     if (editAccount && editAccount.cashflowRole) this.cashflowRoleSelect.value = editAccount.cashflowRole;
 
-    // 估值过期天数（仅 market / depreciation 时显示）
+    // 估值过期天数（仅 market 时显示）
     this.staleDaysField = contentEl.createDiv(); this.staleDaysField.addClass('fb-field');
     this.staleDaysField.createEl('label', { text: t('modal.accounts.staleDays') });
     this.staleDaysInput = this.staleDaysField.createEl('input', {
@@ -285,51 +277,11 @@ class AccountEditModal extends Modal {
     this.staleDaysField.createDiv({ text: t('modal.accounts.staleDaysHint'), cls: 'fb-hint' });
     if (editAccount && editAccount.staleDays != null) this.staleDaysInput.value = String(editAccount.staleDays);
 
-    // 折旧参数（仅 depreciation 时显示）
-    this.depSection = contentEl.createDiv(); this.depSection.addClass('fb-field');
-    this.depSection.createEl('label', { text: t('modal.accounts.depreciation') });
-
-    const depPriceField = this.depSection.createDiv(); depPriceField.addClass('fb-field');
-    depPriceField.createEl('label', { text: t('modal.accounts.depPrice') });
-    this.depPriceInput = depPriceField.createEl('input', {
-      type: 'number', cls: 'fb-input', placeholder: '0.00',
-    });
-
-    const depDateField = this.depSection.createDiv(); depDateField.addClass('fb-field');
-    depDateField.createEl('label', { text: t('modal.accounts.depDate') });
-    this.depDateInput = depDateField.createEl('input', {
-      type: 'date', cls: 'fb-input',
-    });
-
-    const depYearsField = this.depSection.createDiv(); depYearsField.addClass('fb-field');
-    depYearsField.createEl('label', { text: t('modal.accounts.depYears') });
-    this.depYearsInput = depYearsField.createEl('input', {
-      type: 'number', cls: 'fb-input', placeholder: '0',
-    });
-
-    const depSalvageField = this.depSection.createDiv(); depSalvageField.addClass('fb-field');
-    depSalvageField.createEl('label', { text: t('modal.accounts.depSalvage') });
-    this.depSalvageInput = depSalvageField.createEl('input', {
-      type: 'number', cls: 'fb-input', placeholder: '0.00',
-    });
-    depSalvageField.createDiv({ text: t('modal.accounts.depSalvageHint'), cls: 'fb-hint' });
-
-    // 预填折旧参数
-    if (editAccount?.depreciation) {
-      const dep = editAccount.depreciation;
-      this.depPriceInput.value = String(dep.purchasePrice / 100);
-      this.depDateInput.value = dep.purchaseDate;
-      this.depYearsInput.value = String(dep.usefulLifeYears);
-      if (dep.salvageValue != null) this.depSalvageInput.value = String(dep.salvageValue / 100);
-    }
-
-    // 根据计价方式切换 staleDays / 折旧区可见性；根据类别切换现金流角色
+    // 根据计价方式切换 staleDays 可见性；根据类别切换现金流角色
     const updateVisibility = (): void => {
       const val = this.valuationSelect.value;
-      const showStale = val === 'market' || val === 'depreciation';
-      const showDep = val === 'depreciation';
+      const showStale = val === 'market';
       this.staleDaysField.toggleClass('is-hidden', !showStale);
-      this.depSection.toggleClass('is-hidden', !showDep);
       const cls = this.classSelect.value;
       this.cashflowRoleField.toggleClass('is-hidden', cls !== 'asset');
     };
@@ -363,25 +315,8 @@ class AccountEditModal extends Modal {
     const valuation = (this.valuationSelect.value || undefined) as AccountDef['valuation'];
     const cashflowRole = (this.cashflowRoleSelect.value || undefined) as AccountDef['cashflowRole'];
     const staleDaysRaw = parseInt(this.staleDaysInput.value, 10);
-    const staleDays = (valuation === 'market' || valuation === 'depreciation') && !isNaN(staleDaysRaw)
+    const staleDays = valuation === 'market' && !isNaN(staleDaysRaw)
       ? staleDaysRaw : undefined;
-
-    let depreciation: DepreciationDef | undefined;
-    if (valuation === 'depreciation') {
-      const price = parseFloat(this.depPriceInput.value);
-      const date = this.depDateInput.value;
-      const years = parseFloat(this.depYearsInput.value);
-      const salvage = parseFloat(this.depSalvageInput.value);
-      if (!isNaN(price) && date && !isNaN(years)) {
-        depreciation = {
-          purchasePrice: Math.round(price * 100),
-          purchaseDate: date,
-          usefulLifeYears: years,
-          method: 'straight-line',
-          salvageValue: !isNaN(salvage) ? Math.round(salvage * 100) : undefined,
-        };
-      }
-    }
 
     const accounts = this.plugin.config.accounts;
     if (!this.options.editName) {
@@ -389,7 +324,7 @@ class AccountEditModal extends Modal {
       // 新增：默认 asset 类
       accounts.push({
         name, class: cls || 'asset', icon: icon || undefined,
-        owner, valuation, staleDays, depreciation, cashflowRole,
+        owner, valuation, staleDays, cashflowRole,
       });
     } else {
       const target = accounts.find((a) => a.name === this.options.editName);
@@ -400,8 +335,6 @@ class AccountEditModal extends Modal {
         target.owner = owner;
         target.valuation = valuation;
         target.staleDays = staleDays;
-        // 仅当计价方式为 depreciation 时写入折旧参数，否则清除
-        target.depreciation = depreciation;
         // 现金流角色：空值表示「按计价方式智能推断」
         target.cashflowRole = cashflowRole;
       }

@@ -304,10 +304,8 @@ function renderValCard(parent: HTMLElement, val: Valuation, ctx: ValRenderCtx, o
     ? t('valuation.kind.unknown')
     : vType === 'market'
       ? t('valuation.kind.market')
-      : vType === 'depreciation'
-        ? t('valuation.kind.depreciation')
-        : t('valuation.kind.book');
-  const kindCls = !isKnown || vType === 'book' ? 'book' : vType === 'depreciation' ? 'dep' : '';
+      : t('valuation.kind.book');
+  const kindCls = !isKnown || vType === 'book' ? 'book' : '';
 
   // 变化（vs 上一条估值）
   let deltaHtml = `<span class="bc-val-delta flat">${t('valuation.noHistory')}</span>`;

@@ -47,30 +47,24 @@ export interface Valuation {
 
 // ─── 配置子结构 ───────────────────────────────────────────────
 
-// 账户定义：用户持有的金融账户（资产 / 负债类）
+// 账户定义：用户持有的金融账户（资产 / 负债类）。
+// 重要（2026-08-04 终版）：账户是「分类容器」，价值完全由账本流水驱动——
+// 账面（book）账户价值 = 交易累加；市值（market）账户价值 = 账本内估值行覆盖。
+// 曾引入「具体资产」面板 + 折旧派生（购价/日期/年限/残值手填），
+// 用户拍板：插件本身就能记账转账，资产价值应由记账自动得出，面板已整体废弃。
 export interface AccountDef {
   name: string; // 显示名，如 "现金" / "银行卡"
   class: AccountClass; // 五大类归属（M1 仅 asset / liability）
   icon?: string; // 可选 emoji 图标
   // ── 资产管理（§5 归属 + §4 计价方式） ──
   owner?: Owner;                 // 账户归属，缺省 = config.defaultOwner（"自己"）
-  valuation?: 'book' | 'market' | 'depreciation';  // 计价方式，缺省 'book'
-  staleDays?: number;            // 估值过期阈值（天）；仅 market/depreciation 生效；缺省取 config.defaultStaleDays
+  valuation?: 'book' | 'market'; // 计价方式，缺省 'book'（账面 = 账本流水累加）；'market' = 市值，靠估值行覆盖
+  staleDays?: number;            // 估值过期阈值（天）；仅 market 生效；缺省取 config.defaultStaleDays
   // ── 会计增强（M3，可选字段） ──
   accrued?: boolean; // 应计标记（应计负债 / 待摊资产，纯标记不要求借贷分录）
   sinkingFund?: string; // 专项储蓄池名称（如 "婚礼基金" / "教育金"）
-  depreciation?: DepreciationDef; // 折旧定义（大件资产可选，小件不填）
   // ── 现金流行为分类（阶段二：资产分桶用） ──
   cashflowRole?: CashflowRole; // growth=生息增长 / cash=现金类 / fixed=非生息资产 / rental=出租房
-}
-
-// 折旧定义（§1 衍生设计 D：大件资产可选折旧）
-export interface DepreciationDef {
-  purchasePrice: AmountInCents; // 购买价（分）
-  purchaseDate: string; // 购买日期 YYYY-MM-DD
-  usefulLifeYears: number; // 预计使用年限
-  method: 'straight-line'; // 目前仅支持直线法
-  salvageValue?: AmountInCents; // 残值（分），缺省 0
 }
 
 // 交易类型定义：收入 / 支出的分类，支持自定义字段（须可筛选）
@@ -124,6 +118,12 @@ export interface LifeEventDef {
   label: string; // 事件名称，如「买房」
   type: LifeEventType; // 事件类型（决定配色）
   age: number; // 触发年龄（与 ficalc 的「当前年龄」同一口径）；type==='retire' 时此字段被忽略，图表位置由 ficalc 的「退休年龄」参数决定
+  /**
+   * 触发日期（可选，YYYY-MM-DD）。设置了日期后，事件按「日期 + 用户生日」推导触发年龄
+   * （`age` 字段仍保留为推导结果，兼容未填生日的场景）；未设置日期则直接用 `age` 触发。
+   * type==='retire' 时此字段被忽略。
+   */
+  date?: string;
   enabled: boolean; // 是否参与计算（关掉后仍在列表里，但不影响曲线——便于做对比）
   note?: string; // 关联笔记（Obsidian 链接路径），图上点击事件即打开
   oneOff?: AmountInCents; // 当年一次性现金流（正=进账，负=支出，如买房首付填负数）
@@ -216,9 +216,15 @@ export interface FinanceConfig {
   transactionTypes: TransactionTypeDef[]; // 可配置交易类型
   budgets: BudgetDef[]; // 预算计划列表（按交易类型设定支出上限，驱动预算视图）
   lifeEvents: LifeEventDef[]; // 人生事件列表（买房/生娃等，驱动现金流模拟器的事件层与计算）
+  /**
+   * 用户生日（YYYY-MM-DD，可选）。设置后：
+   * ① ficalc 的「当前年龄」可从生日按今天推导（代码块 age 参数可不填）；
+   * ② 设置了触发日期的 LifeEvent 可由「日期 + 生日」推导触发年龄。
+   */
+  birthday?: string;
   recurringPlans: RecurringPlanDef[]; // 日常花费计划（finance-recurring V1）
   recurringSkips: RecurringSkips; // 日常计划跳过记录（按应发生日）
   loanPlans: LoanDef[]; // 贷款计划（finance-recurring V2）
   fiCalc: FICalcConfig; // 财务自由计算器参数
-  defaultStaleDays: number; // 估值过期全局默认阈值（天），仅 market/depreciation 账户生效；账户级 staleDays 优先
+  defaultStaleDays: number; // 估值过期全局默认阈值（天），仅 market 账户生效；账户级 staleDays 优先
 }

@@ -326,40 +326,6 @@ export function simulateRetirement(
   };
 }
 
-// ─── 折旧计算（M3：直线法） ────────────────────────────────────
-
-/**
- * 直线法折旧：计算当前公允值
- *
- * @param purchasePrice 购买价（分）
- * @param purchaseDate 购买日期 YYYY-MM-DD
- * @param usefulLifeYears 预计使用年限
- * @param referenceDate 参考日期（默认今天）
- * @param salvageValue 残值（分），缺省 0；折旧后最低不低于此值
- * @returns 当前公允值（分），最低为残值
- */
-export function currentValue(
-  purchasePrice: number,
-  purchaseDate: string,
-  usefulLifeYears: number,
-  referenceDate?: Date,
-  salvageValue?: number,
-): number {
-  const salvage = salvageValue ?? 0;
-  const depreciable = purchasePrice - salvage;
-  if (depreciable <= 0) return purchasePrice; // 残值 >= 购价，不折旧
-
-  const ref = referenceDate ?? new Date();
-  const purchase = new Date(purchaseDate);
-  const yearsHeld = (ref.getTime() - purchase.getTime()) / (365.25 * 24 * 3600 * 1000);
-
-  if (yearsHeld <= 0) return purchasePrice;
-  if (yearsHeld >= usefulLifeYears) return salvage;
-
-  const annualDepreciation = depreciable / usefulLifeYears;
-  return Math.max(salvage, Math.round(purchasePrice - annualDepreciation * yearsHeld));
-}
-
 // ─── 生命周期现金流投影（阶段一：积累期 + 支取期完整曲线） ──────
 //
 // 与 projectPortfolio 的区别：projectPortfolio 只算「退休后」一段；

@@ -22,11 +22,13 @@
  */
 
 import type { App, MarkdownPostProcessorContext } from 'obsidian';
-import type { FinanceConfig, AccountDef, AmountInCents } from '../types';
+import type { FinanceConfig, AccountDef, AmountInCents, Valuation } from '../types';
 import {
   buildAccountFlows,
   computeNetWorth,
+  computeNetWorthSeries,
   computeRealizedPnL,
+  type AccountFlow,
   type AccountValue,
   type NetWorthResult,
 } from '../engine/networth';
@@ -38,7 +40,8 @@ import {
   currencySymbol,
 } from '../engine/fx';
 import { t } from '../i18n';
-import { BLOCK_ICONS, setSvg } from './icons';
+import { BLOCK_ICONS, ICON_CARET, setSvg } from './icons';
+import { localDateString } from '../util/date';
 
 // ─── 参数解析 ───────────────────────────────────────────────────
 
@@ -321,7 +324,13 @@ export function renderAssets(
   const result: NetWorthResult = computeNetWorth(
     accountDefs,
     balancesMap,
-    { valuations, staleDaysDefault, today: new Date(), fxRates, baseCurrency },
+    {
+      valuations,
+      staleDaysDefault,
+      today: new Date(),
+      fxRates,
+      baseCurrency,
+    },
     { flows, ownerFilter: params.owner },
   );
 
@@ -399,6 +408,23 @@ export function renderAssets(
   // ── 对账提示（#7）：仅在合并全部归属时有意义（单人切片本就不零和）──
   if (!params.owner) {
     renderReconciliation(root, result, symbol);
+  }
+
+  // ── 资产走势（2026-08-04 新增）：可展开/收起的净资产波动曲线 ──
+  // 数据复用 computeNetWorthSeries（历史切片重算，估值+结转推演+折旧派生全口径），
+  // 采样周期支持 月 / 季 / 年；默认折叠。
+  if (entries.length > 0) {
+    renderTrendSection(root, {
+      accountDefs,
+      flows,
+      valuations,
+      staleDaysDefault,
+      today: new Date(),
+      fxRates,
+      baseCurrency,
+      ownerFilter: params.owner,
+      symbol,
+    });
   }
 
   // ── 资产配置条：按「账户名首段」聚合（现金 / 股票 / 房产 / 车 …）──
@@ -749,6 +775,179 @@ function renderAccountCard(
   }
 }
 
+// ─── 资产走势（2026-08-04 新增） ───────────────────────────────────
+
+type TrendPeriod = 'month' | 'quarter' | 'year';
+
+interface TrendCtx {
+  accountDefs: AccountDef[];
+  flows: Map<string, AccountFlow[]>;
+  valuations: Valuation[];
+  staleDaysDefault: number;
+  today: Date;
+  fxRates: Record<string, number>;
+  baseCurrency: string;
+  ownerFilter?: string;
+  symbol: string;
+}
+
+/** 走势采样日期：从首笔交易日到今天的周期边界（月/季/年），末点恒为今天 */
+function trendSampleDates(start: string, period: TrendPeriod): string[] {
+  const [sy, sm] = start.split('-').map(Number);
+  const now = new Date();
+  const ty = now.getFullYear();
+  const tm = now.getMonth() + 1;
+  const pad = (n: number): string => String(n).padStart(2, '0');
+
+  const out: string[] = [start];
+  for (let y = sy; y <= ty; y++) {
+    const mFrom = y === sy ? Math.max(1, sm) : 1;
+    const mTo = y === ty ? tm : 12;
+    for (let m = mFrom; m <= mTo; m++) {
+      const keep =
+        period === 'month' || (period === 'quarter' && m % 3 === 0) || (period === 'year' && m === 12);
+      if (!keep) continue;
+      const last = new Date(y, m, 0).getDate();
+      out.push(`${y}-${pad(m)}-${pad(last)}`);
+    }
+  }
+  const todayStr = localDateString(now);
+  if (!out.includes(todayStr)) out.push(todayStr);
+  return out;
+}
+
+/**
+ * 可展开/收起的「资产走势」栏：折线 + 面积填充展示净资产（市值口径）随周期波动。
+ * 默认折叠；展开后可按 月 / 季 / 年 切换采样周期，点击即重画。
+ */
+function renderTrendSection(parent: HTMLElement, ctx: TrendCtx): void {
+  const section = parent.createDiv({ cls: 'atrend' });
+  const head = section.createDiv({ cls: 'atrend-head' });
+
+  const caret = head.createSpan({ cls: 'atrend-caret' });
+  setSvg(caret, ICON_CARET);
+  head.createSpan({ cls: 'atrend-title', text: t('assets.trend') });
+
+  // 周期切换（默认折叠时不渲染正文，先记住选择）
+  let period: TrendPeriod = 'month';
+  const seg = head.createDiv({ cls: 'atrend-seg' });
+  const segBtns = new Map<TrendPeriod, HTMLElement>();
+  const periods: Array<{ key: TrendPeriod; label: string }> = [
+    { key: 'month', label: t('assets.trend.month') },
+    { key: 'quarter', label: t('assets.trend.quarter') },
+    { key: 'year', label: t('assets.trend.year') },
+  ];
+  for (const p of periods) {
+    const b = seg.createEl('button', { cls: 'atrend-seg-btn', text: p.label });
+    b.dataset.period = p.key;
+    segBtns.set(p.key, b);
+  }
+  const syncSeg = (): void => {
+    segBtns.forEach((b, k) => b.toggleClass('is-active', k === period));
+  };
+  for (const [k, b] of segBtns) {
+    // stopPropagation 必须：seg 按钮位于 head 内部，click 冒泡会触发 head 的
+    // 展开/收起 toggle，造成「点周期按钮 → 栏被收起」的状态错乱（2026-08-04 修）。
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      period = k;
+      syncSeg();
+      draw();
+    });
+  }
+
+  // 正文（折叠时由 CSS 借 .atrend.is-open 隐藏）
+  const body = section.createDiv({ cls: 'atrend-body' });
+
+  const draw = (): void => {
+    body.empty();
+
+    // 最早一笔流水 → 今天
+    let first = '';
+    for (const arr of ctx.flows.values()) {
+      for (const f of arr) {
+        if (!first || f.date < first) first = f.date;
+      }
+    }
+    if (!first) return;
+
+    const dates = trendSampleDates(first, period);
+    if (dates.length < 2) {
+      body.createDiv({ cls: 'atrend-empty', text: t('assets.trend.empty') });
+      return;
+    }
+
+    const series = computeNetWorthSeries(ctx.accountDefs, ctx.flows, dates, {
+      valuations: ctx.valuations,
+      staleDaysDefault: ctx.staleDaysDefault,
+      today: ctx.today,
+      fxRates: ctx.fxRates,
+      baseCurrency: ctx.baseCurrency,
+    }, ctx.ownerFilter);
+    const pts = series.map((p) => ({ date: p.date, v: p.marketNetWorth }));
+    if (pts.length < 2) {
+      body.createDiv({ cls: 'atrend-empty', text: t('assets.trend.empty') });
+      return;
+    }
+
+    const firstV = pts[0].v;
+    const lastV = pts[pts.length - 1].v;
+    const delta = lastV - firstV;
+    const deltaPct = firstV !== 0 ? (delta / Math.abs(firstV)) * 100 : 0;
+    const up = delta >= 0;
+
+    // 摘要行：起始 → 当前 · 涨跌额 · 涨跌幅
+    const meta = body.createDiv({ cls: 'atrend-meta' });
+    meta.createSpan({ cls: 'atrend-range', text: `${pts[0].date} → ${pts[pts.length - 1].date}` });
+    meta.createSpan({
+      cls: `atrend-delta ${up ? 'is-pos' : 'is-neg'}`,
+      text: `${up ? '▲' : '▼'} ${signedMoney(delta, ctx.symbol)} (${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%)`,
+    });
+
+    // SVG 折线 + 面积
+    const W = 560;
+    const H = 160;
+    const PAD_L = 8;
+    const PAD_R = 8;
+    const PAD_T = 10;
+    const PAD_B = 22;
+    const min = Math.min(...pts.map((p) => p.v));
+    const max = Math.max(...pts.map((p) => p.v));
+    const span = max - min || 1;
+    const x = (i: number): number => PAD_L + (i / (pts.length - 1)) * (W - PAD_L - PAD_R);
+    const y = (v: number): number => PAD_T + (1 - (v - min) / span) * (H - PAD_T - PAD_B);
+
+    const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ');
+    const area = `${line} L${x(pts.length - 1).toFixed(1)} ${(H - PAD_B).toFixed(1)} L${x(0).toFixed(1)} ${(H - PAD_B).toFixed(1)} Z`;
+    const upCls = up ? 'is-pos' : 'is-neg';
+
+    // SVG 折线 + 面积（数据全部为数值，无用户文本注入；字符串拼装与 buildSpark 模式一致）
+    const svgWrap = body.createDiv({ cls: 'atrend-chart-wrap' });
+    svgWrap.innerHTML =
+      `<svg class="atrend-chart" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none">` +
+      `<path class="atrend-area" d="${area}"/>` +
+      `<path class="atrend-line ${upCls}" d="${line}"/>` +
+      `<circle class="atrend-dot" cx="${x(0).toFixed(1)}" cy="${y(firstV).toFixed(1)}" r="3"/>` +
+      `<circle class="atrend-dot is-end ${upCls}" cx="${x(pts.length - 1).toFixed(1)}" cy="${y(lastV).toFixed(1)}" r="3.5"/>` +
+      `</svg>`;
+
+    // 首末日期标注
+    const labels = body.createDiv({ cls: 'atrend-labels' });
+    labels.createSpan({ text: pts[0].date });
+    labels.createSpan({ text: pts[pts.length - 1].date });
+  };
+
+  head.addEventListener('click', () => {
+    const isOpen = section.hasClass('is-open');
+    section.toggleClass('is-open', !isOpen);
+    if (!isOpen) draw();
+  });
+
+  syncSeg();
+  // 默认折叠：由 CSS 隐藏正文，展开时才跑历史切片重算
+  section.toggleClass('is-open', false);
+}
+
 // ─── 辅助函数 ─────────────────────────────────────────────────────
 
 /** 从全局配置中查找账户定义（用于取 icon 等元数据） */
@@ -776,9 +975,8 @@ function accountInitial(name: string): string {
 /** 计价方式的中文标签 */
 function valuationTypeLabel(vtype: AccountValue['valuationType']): string {
   switch (vtype) {
-    case 'market':      return t('assets.marketValue');
-    case 'depreciation': return t('assets.depreciationValue');
+    case 'market': return t('assets.marketValue');
     case 'book':
-    default:            return '';  // book 是默认，不显示徽章
+    default:       return '';  // book 是默认，不显示徽章
   }
 }

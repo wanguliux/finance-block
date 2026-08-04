@@ -51,10 +51,11 @@ import {
 import { currencySymbol, buildSymbolMap, buildFxRates } from '../engine/fx';
 import { bucketAssets, type AssetBuckets } from '../engine/assetBuckets';
 import { buildAccountFlows, computeNetWorthSeries } from '../engine/networth';
-import type { FinanceConfig, AmountInCents, LifeEventType, Valuation } from '../types';
+import type { FinanceConfig, AmountInCents, LifeEventType, LifeEventDef, Valuation } from '../types';
 import { calculateBalances } from '../ledger/closing';
 import type { Indexer, IndexEntry } from '../ledger/indexer';
 import { resolveAccountClass } from '../util/ledgerView';
+import { ageFromBirthday, todayLocal } from '../util/date';
 import { t } from '../i18n';
 import { BLOCK_ICONS, setSvg } from './icons';
 
@@ -68,6 +69,18 @@ const BUFFER_MONTHS_DEFAULT = 6; // 应急金默认月数
 const MANAGED_PARAM = /^\s*(src|source|rate|principal|spend|save|savings|infl|inflation|years|vol|volatility|mode|strategy|age|startAge|retireAge|incomeGrowth|cashRate|bufferMonths)\s*:/;
 
 type SourceMode = 'actual' | 'manual';
+
+/** 由生日推导当前年龄（设置了 config.birthday 时，ficalc 的 age 参数可不填）；无生日/生日非法 → null */
+function derivedCurrentAge(config?: FinanceConfig): number | null {
+  if (!config?.birthday) return null;
+  return ageFromBirthday(config.birthday, todayLocal());
+}
+
+/** 事件的生效年龄：设置了触发日期且有生日 → 由「日期 + 生日」推导；否则用 age 字段 */
+function effectiveEventAge(ev: LifeEventDef, birthday?: string): number {
+  if (ev.date && birthday) return ageFromBirthday(birthday, ev.date) ?? ev.age;
+  return ev.age;
+}
 
 // ─── 跨重渲染的状态保留 ──────────────────────────────────────
 // 语言切换 / 编辑↔预览切换都会触发代码块重渲染；把滑块值缓存在内存里，
@@ -149,10 +162,15 @@ interface FICalcParams {
 }
 
 function parseParams(source: string, config?: FinanceConfig): FICalcParams {
+  // 退休年龄默认值 = 人生事件管理里「退休」事件的触发年龄（2026-08-04 反转语义）；
+  // 事件没配（理论不会，ensureRetire 兜底）回退 60。代码块里的 retireAge 参数与
+  // 用户拖动滑块（cached）都优先于该默认值——即「默认由事件决定，模拟器可改」。
+  const retireDefAge = (config?.lifeEvents ?? []).find((e) => e.type === 'retire')?.age;
   const params: FICalcParams = {
     rate: config?.fiCalc.defaultRate ?? 4,
-    age: 30,
-    retireAge: 60,
+    // 设置了生日 → 当前年龄由生日按今天推导（age 参数可不填）；否则回退 30
+    age: derivedCurrentAge(config) ?? 30,
+    retireAge: retireDefAge ?? 60,
     incomeGrowth: 0,
     inflation: 2,
     years: 30,
@@ -801,12 +819,17 @@ export function renderFICalc(
     // 已启用且落在模拟区间内的事件才参与；同一份数据分别转成
     //   ① 引擎事件（EngineLifeEvent）→ 叠加进曲线计算
     //   ② 图表标记（ChartEvent）→ 画在「关键事件」层上，可点开笔记
+    // 触发年龄：设置了触发日期的事件按「日期 + 生日」推导（effectiveEventAge），
+    // 未设日期（或无生日）直接按 age 字段。
     const currentYear = new Date().getFullYear();
-    const userEvents = (config?.lifeEvents ?? []).filter(
-      (e) => e.type !== 'retire' && e.enabled && e.age >= age && e.age <= endAge,
-    );
+    const birthday = config?.birthday;
+    const userEvents = (config?.lifeEvents ?? []).filter((e) => {
+      if (e.type === 'retire' || !e.enabled) return false;
+      const a = effectiveEventAge(e, birthday);
+      return a >= age && a <= endAge;
+    });
     const engineEvents: EngineLifeEvent[] = userEvents.map((e) => ({
-      atAge: e.age,
+      atAge: effectiveEventAge(e, birthday),
       oneOff: e.oneOff,
       deltaSpend: e.deltaSpend,
       deltaIncome: e.deltaIncome,
@@ -858,14 +881,17 @@ export function renderFICalc(
     // 图表事件层：配置里的退休标记 + 用户事件，按年龄排序
     const events: ChartEvent[] = [
       ...(retireEvent ? [retireEvent] : []),
-      ...userEvents.map((e) => ({
-        id: e.id,
-        type: e.type,
-        label: e.label,
-        age: e.age,
-        year: currentYear + Math.max(0, e.age - age),
-        note: e.note,
-      })),
+      ...userEvents.map((e) => {
+        const a = effectiveEventAge(e, birthday);
+        return {
+          id: e.id,
+          type: e.type,
+          label: e.label,
+          age: a,
+          year: currentYear + Math.max(0, a - age),
+          note: e.note,
+        };
+      }),
     ].sort((a, b) => a.age - b.age);
 
     // 点击事件：有关联笔记就跳转，否则打开事件管理弹窗直接编辑（退休标记同样可点开编辑）

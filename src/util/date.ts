@@ -51,3 +51,41 @@ export function daysBefore(anchor: string, n: number): string {
   d.setDate(d.getDate() - n);
   return localDateString(d);
 }
+
+/**
+ * 由生日推导「截至某日期」的周岁年龄。
+ *
+ * 规则：未到当年生日当天，算上一年（出生当年生日当天记 0 岁）。
+ * 例：生日 1996-05-20，截至 2026-05-19 → 29 岁；2026-05-20 → 30 岁。
+ *
+ * 供两处使用：
+ * ① ficalc「当前年龄」从生日按今天推导（设置了 config.birthday 时 age 参数可不填）；
+ * ② 设置了触发日期（LifeEventDef.date）的人生事件，由「日期 + 生日」推导触发年龄。
+ *
+ * @returns 年龄（0–120）；birthday 或 at 非法、或参照日早于出生日（未出生）时返回 null
+ */
+export function ageFromBirthday(birthday: string, at: string): number | null {
+  const bm = DATE_STR_RE.exec(birthday.trim());
+  const am = DATE_STR_RE.exec(at.trim());
+  if (!bm || !am) return null;
+
+  const by = Number(bm[1]);
+  const bmo = Number(bm[2]);
+  const bd = Number(bm[3]);
+  const ay = Number(am[1]);
+  const amo = Number(am[2]);
+  const ad = Number(am[3]);
+
+  // 日期合法性兜底：月份 1–12、日期 1–31（日月上限交给 Date 归一）
+  if (bmo < 1 || bmo > 12 || amo < 1 || amo > 12) return null;
+  if (bd < 1 || bd > 31 || ad < 1 || ad > 31) return null;
+
+  // 参照日早于出生日（未出生）→ 不可能，返回 null
+  if (ay < by) return null;
+  if (ay === by && (amo < bmo || (amo === bmo && ad < bd))) return null;
+
+  let age = ay - by;
+  // 未过今年生日 → 减一岁
+  if (amo < bmo || (amo === bmo && ad < bd)) age -= 1;
+  return Math.max(0, Math.min(120, age));
+}

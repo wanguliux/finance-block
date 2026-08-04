@@ -13,11 +13,10 @@ export const DEFAULT_CONFIG: FinanceConfig = {
     { name: '现金',   class: 'asset', icon: '💵', owner: '自己', valuation: 'book',    cashflowRole: 'cash' },
     // 投资 —— 市值计价，生息增长（股票/基金统称，用户可按需改名）
     { name: '股票',   class: 'asset', icon: '📈', owner: '自己', valuation: 'market',  cashflowRole: 'growth', staleDays: 30 },
-    // 大件资产 —— 市值计价，非生息（自住房/收藏品统称）
-    { name: '房产',   class: 'asset', icon: '🏠', owner: '自己', valuation: 'market',  cashflowRole: 'fixed',  staleDays: 180 },
-    // 折旧资产 —— 直线折旧，非生息
-    { name: '车',     class: 'asset', icon: '🚗', owner: '自己', valuation: 'depreciation', cashflowRole: 'fixed',
-      depreciation: { purchasePrice: 200000_00, purchaseDate: '2024-01-01', usefulLifeYears: 10, method: 'straight-line', salvageValue: 20000_00 } },
+    // 大件资产 —— 账面计价（2026-08-04 终版：资产价值由记账自动得出，
+    // 曾设 market/折旧派生+具体资产面板，用户拍板「能记账就记账驱动」，已废弃）
+    { name: '房产',   class: 'asset', icon: '🏠', owner: '自己', cashflowRole: 'fixed' },
+    { name: '车',     class: 'asset', icon: '🚗', owner: '自己', cashflowRole: 'fixed' },
     // 负债
     { name: '房贷',   class: 'liability', icon: '🏦', owner: '自己' },
     // 收入（流量账户，记完即归零）

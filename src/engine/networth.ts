@@ -11,8 +11,10 @@
  *
  * 估值解析优先级（一条规则贯穿全部）：
  *   1. 手动估值行（该账户 asOf 之前日期最新的一条）→ 再按其后的交易做**结转推演**
- *   2. 折旧派生值（仅 valuation: 'depreciation' 且无更晚手动估值时）
- *   3. 账面余额（兜底）
+ *   2. 账面余额（兜底）
+ *
+ * 注（2026-08-04 终版）：折旧派生（valuation: 'depreciation'）已废弃——
+ * 资产价值由账本流水驱动（book），用户拍板「能记账就记账」，不再有折旧派生分支。
  *
  * 纯函数模块，不依赖 Obsidian API，可直接测试。
  */
@@ -21,10 +23,8 @@ import type {
   AccountClass,
   AccountDef,
   AmountInCents,
-  DepreciationDef,
   Valuation,
 } from '../types';
-import { currentValue } from './fiCalc';
 import { convertToBase } from './fx';
 import { resolveAccountDef } from '../util/ledgerView';
 
@@ -43,12 +43,12 @@ export interface AccountValue {
   bookValue: AmountInCents; // 账面余额（流水累加）
   marketValue: AmountInCents; // 市值（按优先级解析 + 结转推演）
   unrealizedPnL: AmountInCents; // 未实现损益 = marketValue - bookValue
-  source: 'valuation' | 'depreciation' | 'book'; // 市值来源
+  source: 'valuation' | 'book'; // 市值来源（depreciation 派生已废弃，见文件头注）
   valuationDate?: string;   // 最新估值日期（YYYY-MM-DD，仅 source=valuation 时有值）
   isStale: boolean;         // 估值是否过期
   currency?: string;        // 估值行的原始币种（仅 source=valuation 时可能有值）
   owner?: string;           // 账户归属
-  valuationType: 'book' | 'market' | 'depreciation'; // 账户配置的计价方式
+  valuationType: 'book' | 'market'; // 账户配置的计价方式
   /** 估值日之后被结转推演的交易笔数（>0 表示市值已按后续买卖自动调整，见 #4） */
   carriedFlows: number;
 }
@@ -101,7 +101,7 @@ export interface ResolveContext {
   valuations: Valuation[];
   /** 全局估值过期阈值（天） */
   staleDaysDefault: number;
-  /** 参考日期（用于折旧派生与 stale 判定），默认今天 */
+  /** 参考日期（用于 stale 判定），默认今天 */
   today?: Date;
   fxRates?: Record<string, number>;
   baseCurrency?: string;
@@ -140,17 +140,6 @@ export function getValuationSeries(valuations: Valuation[], account: string): Va
     .filter((v) => v.account === account)
     .slice()
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-}
-
-/** 折旧派生当前值（含残值支持） */
-function depreciationValue(def: DepreciationDef, today: Date): AmountInCents {
-  const salvage = def.salvageValue ?? 0;
-  const depreciable = def.purchasePrice - salvage;
-  if (depreciable <= 0) return def.purchasePrice; // 残值 >= 购价，不折旧
-
-  const val = currentValue(def.purchasePrice, def.purchaseDate, def.usefulLifeYears, today);
-  // currentValue 最低到 0，但有了残值后最低应为 salvageValue
-  return Math.max(salvage, val);
 }
 
 /** 计算两个日期之间相差的天数 */
@@ -368,21 +357,7 @@ export function resolveAccountValue(
     };
   }
 
-  // 尝试折旧派生值（仅 depreciation 类账户）
-  // 注意用 refDate 而非 today：历史切片（asOf）下必须按当年的折旧进度算，
-  // 否则 2020 年的车会按 2026 年的残值入账，历史净资产被系统性低估。
-  if (vType === 'depreciation' && accountDef.depreciation) {
-    const depVal = depreciationValue(accountDef.depreciation, new Date(refDate));
-    return {
-      ...base,
-      marketValue: depVal,
-      unrealizedPnL: depVal - bookBalance,
-      source: 'depreciation',
-      isStale: false, // 折旧自动派生，不存在 stale
-    };
-  }
-
-  // market 类账户无估值行、非折旧 → 回退账面并标记 stale
+  // market 类账户无估值行 → 回退账面并标记 stale（需用户更新估值）
   return {
     ...base,
     source: 'book',
