@@ -357,11 +357,21 @@ export function resolveAccountValue(
     };
   }
 
-  // market 类账户无估值行 → 回退账面并标记 stale（需用户更新估值）
+  // market 类账户无估值行：「估值已过期」只在「账户里确实持有资产」时才成立。
+  // 规则（修复：空账户 / 未入账资产 不应误报过期）：
+  //   ① 空账户（账面为 0 / 从未入账任何资产）→ 尚未开始使用，不提示过期；
+  //   ② 已入账资产，但距「首笔入账日」未超过 staleDays → 仍在宽限期内，不提示；
+  //   ③ 已入账资产且超过 staleDays 仍未估值 → 该去更新估值了。
+  // 即过期时钟从「第一笔资产入账」那一刻起算，而非从「当前没有估值行」起算。
+  if (bookBalance === 0) {
+    return { ...base, source: 'book', isStale: false };
+  }
+  const flowsUpToRef = (flows ?? []).filter((f) => !ctx.asOf || f.date <= ctx.asOf);
+  const sinceFirst = flowsUpToRef.length > 0 ? daysBetween(flowsUpToRef[0].date, refDate) : 0;
   return {
     ...base,
     source: 'book',
-    isStale: true, // market 类无估值行 = 需要更新
+    isStale: sinceFirst > staleDays,
   };
 }
 
