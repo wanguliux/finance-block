@@ -546,7 +546,18 @@
 
 /* 筛选工具栏（kind 下拉 + 账户下拉 + 搜索框） */
 .finance-block.finance-log .log-filterbar { display: flex; align-items: center; gap: 0.6em; margin-bottom: 0.8em; flex-wrap: wrap; }
-.finance-block.finance-log .log-select,
+.finance-block.finance-log .log-select {
+  font: inherit; font-size: 0.9em;
+  /* 右侧预留原生下拉箭头空间，否则所选文字右端会被箭头遮挡而显示不全 */
+  padding: 0.38em 1.9em 0.38em 0.65em;
+  line-height: 1.4;
+  box-sizing: border-box;
+  flex: 0 0 auto;            /* 不收缩，宁可换行也不挤压/截断文字 */
+  max-width: 100%;
+  cursor: pointer;
+  border: 1px solid var(--fb-border); border-radius: var(--fb-radius-sm);
+  background: var(--background-primary); color: var(--text-normal);
+}
 .finance-block.finance-log .log-search {
   font: inherit; font-size: 0.9em; padding: 0.38em 0.65em;
   border: 1px solid var(--fb-border); border-radius: var(--fb-radius-sm);
