@@ -92,7 +92,6 @@ function sumExpenseForType(
 
   let total = 0;
   for (const e of entries) {
-    if (e.isDraft) continue;
     if (e.transaction.date < startDate || e.transaction.date > endDate) continue;
     if ((e.transaction.txnType || '').toLowerCase() !== typeKey) continue;
     // 仅累加「真实费用账户」leg（按账户类别推导），而非所有负向 leg——
@@ -139,7 +138,7 @@ export function renderBudget(
     return;
   }
 
-  const allEntries = indexer.getAllTransactions();
+  const allEntries = indexer.getPostedTransactions();
   const cards: BudgetCardItem[] = [];
   for (const plan of plans) {
     const period = plan.period ?? 'month';

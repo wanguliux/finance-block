@@ -29,7 +29,7 @@ const MANAGER_KEYS = ['currency', 'account', 'type', 'owner', 'budget', 'lifeEve
 type ManagerKey = (typeof MANAGER_KEYS)[number];
 
 /** 路径类输入行的 key（存储语义不同，bindPathInput 里分别处理） */
-type PathKey = 'configPath' | 'ledgerPath' | 'draftScanFolders';
+type PathKey = 'configPath' | 'ledgerPath';
 
 export class FinanceSettingTab extends PluginSettingTab {
   plugin: FinancePlugin;
@@ -148,18 +148,6 @@ export class FinanceSettingTab extends PluginSettingTab {
             desc: t('settings.language.desc'),
             control: { type: 'dropdown', key: 'language', options: { zh: '中文', en: 'English' } },
           },
-          {
-            name: t('settings.draftScan'),
-            desc: t('settings.draftScan.desc'),
-            control: { type: 'toggle', key: 'draftScan' },
-          },
-          {
-            name: t('settings.draftScanFolders'),
-            desc: t('settings.draftScanFolders.desc'),
-            // 仅当「待入账筛查」开启时才展示范围输入
-            visible: () => this.plugin.settings.draftScan,
-            render: (setting: Setting) => this.renderPathInput(setting, 'draftScanFolders', t('settings.draftScanFolders.placeholder')),
-          },
         ],
       },
     ];
@@ -180,10 +168,6 @@ export class FinanceSettingTab extends PluginSettingTab {
       setLocale((value as Locale) ?? 'zh');
       rerenderAllBlocks(); // 已打开的笔记里代码块同步切语言
       this.update(); // 刷新设置页文案（重取 getSettingDefinitions()）
-    } else if (key === 'draftScan') {
-      // 开关变化即时重建索引：开启=按范围扫草稿；关闭=清空草稿、只读账本
-      void this.plugin.indexer?.fullScan();
-      this.update(); // 重估「筛查范围」的 visible
     }
   }
 
@@ -256,25 +240,6 @@ export class FinanceSettingTab extends PluginSettingTab {
             this.display(); // 刷新设置页文本
           }),
       );
-    new Setting(containerEl)
-      .setName(t('settings.draftScan'))
-      .setDesc(t('settings.draftScan.desc'))
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.draftScan).onChange(async (value) => {
-          this.plugin.settings.draftScan = value;
-          await this.plugin.saveSettings();
-          // 开关变化即时重建索引：开启=按范围扫草稿；关闭=清空草稿、只读账本
-          void this.plugin.indexer?.fullScan();
-          this.display(); // 按开关显隐「筛查范围」输入
-        }),
-      );
-    // 仅当开启筛查时才展示范围输入（留空 = 全库）
-    if (this.plugin.settings.draftScan) {
-      new Setting(containerEl)
-        .setName(t('settings.draftScanFolders'))
-        .setDesc(t('settings.draftScanFolders.desc'))
-        .addText((text) => this.bindPathInput(text, 'draftScanFolders', t('settings.draftScanFolders.placeholder')));
-    }
   }
 
   // ── 共享行渲染 ────────────────────────────────────────
@@ -285,27 +250,17 @@ export class FinanceSettingTab extends PluginSettingTab {
   }
 
   /** 绑定路径类输入：回显现值 + PathSuggest + onChange 持久化。
-   * configPath / ledgerPath 存字符串；draftScanFolders 逗号拆分成数组。 */
+   * configPath / ledgerPath 存字符串。 */
   private bindPathInput(text: TextComponent, key: PathKey, placeholder: string): void {
     const settings = this.plugin.settings;
     const current =
-      key === 'draftScanFolders' ? settings.draftScanFolders.join(', ') : key === 'configPath' ? settings.configPath : settings.ledgerPath;
+      key === 'configPath' ? settings.configPath : settings.ledgerPath;
     text
       .setPlaceholder(placeholder)
       .setValue(current)
       .onChange(async (value) => {
-        if (key === 'draftScanFolders') {
-          settings.draftScanFolders = value
-            .split(',')
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0);
-          await this.plugin.saveSettings();
-          // 范围变化即时重建索引（仅开启时该设置才有意义）
-          void this.plugin.indexer?.fullScan();
-        } else {
-          settings[key] = value;
-          await this.plugin.saveSettings();
-        }
+        settings[key] = value;
+        await this.plugin.saveSettings();
       });
     new PathSuggest(this.app, text);
   }

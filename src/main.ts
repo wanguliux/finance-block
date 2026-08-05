@@ -40,12 +40,11 @@ export default class FinancePlugin extends Plugin {
     this.configManager = new ConfigManager(this.app, this.settings.configPath);
     this.config = await this.configManager.load();
 
-    // 初始化索引器（纯内存索引；待入账筛查范围由 settings 实时注入，关闭时启动零全库扫描）
+    // 初始化索引器（纯内存索引；只读取指定的账本文件，不遍历全库）
     this.indexer = new Indexer(
       this.app,
       this.settings.ledgerPath,
       this.settings.archiveLedgers,
-      () => ({ enabled: this.settings.draftScan, folders: this.settings.draftScanFolders }),
     );
     await this.indexer.init();
 

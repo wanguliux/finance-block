@@ -32,8 +32,8 @@ export interface AppendResult {
  *   - 文件存在但没有 fin-beancount 块 → 在文件末尾追加一个 fin-beancount 块。
  *
  * @param ledgerPath  账本文件完整路径（如 账本/账本.md）
- * @param entryBody   分录内文（**不含** ``` 围栏），如：
- *                      2026-07-29 * 午餐\n  现金 -3500\n  费用:餐饮 3500
+ * @param entryBody   分录内文（**不含** ``` 围栏），如（虚构示例）：
+ *                      2026-01-01 * 示例支出\n  资产:现金 -3500\n  费用:示例 3500
  * @param blockRefId  块引用 ID（可带或不带前导 ^t-），如 ^t-20260729120000
  */
 export async function appendEntryToLedgerBlock(

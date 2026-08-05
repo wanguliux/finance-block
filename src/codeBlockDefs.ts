@@ -92,7 +92,7 @@ export const FINANCE_CODE_BLOCK_DEFS: CodeBlockDef[] = [
         labelKey: 'param.narration',
         descKey: 'param.narration.desc',
         type: 'text',
-        placeholder: '午餐 牛肉面',
+        placeholder: '如 午餐、工资入账等',
       },
       {
         key: 'legs',

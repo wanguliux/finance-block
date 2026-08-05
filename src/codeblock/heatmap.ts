@@ -117,7 +117,6 @@ export function aggregateNetCells(
   const uncat = t('heatmap.uncategorized');
   const cells = new Map<string, NetCell>();
   for (const e of entries) {
-    if (e.isDraft) continue;
     const date = e.transaction.date;
     if (date < startDate || date > endDate) continue;
     const { income, expense } = txnInOut(e, config, fxRates, base);
@@ -363,7 +362,7 @@ export function renderHeatmap(
 
   const symbol = currencySymbol(config?.baseCurrency ?? 'CNY', buildSymbolMap(config?.currencies));
   const todayStr = localDateString(new Date());
-  const allEntries = indexer.getAllTransactions();
+  const allEntries = indexer.getPostedTransactions();
   const base = config?.baseCurrency ?? 'CNY';
 
   el.empty();

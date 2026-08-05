@@ -429,7 +429,7 @@ export function renderLog(
   }
 
   // ── 取数 ──
-  const allEntries = [...indexer.getAllTransactions()];
+  const allEntries = [...indexer.getPostedTransactions()];
   allEntries.sort((a, b) => b.transaction.date.localeCompare(a.transaction.date));
   const filtered = filterEntries(allEntries, params);
 
@@ -533,12 +533,7 @@ export function renderLog(
   function updateSummary(visible: IndexEntry[]): void {
     let income = 0;
     let expense = 0;
-    let drafts = 0;
     for (const e of visible) {
-      if (e.isDraft) {
-        drafts++;
-        continue;
-      }
       const f = entryFlow(e, config);
       income += f.income;
       expense += f.expense;
@@ -549,8 +544,7 @@ export function renderLog(
       `<span class="s-item">${t('log.summary.count', { n: String(visible.length) })}</span>` +
         `<span class="s-item">${t('log.summary.income')} <b class="pos">${fmtAmount(income)}</b></span>` +
         `<span class="s-item">${t('log.summary.expense')} <b class="neg">${fmtAmount(-expense)}</b></span>` +
-        `<span class="s-item">${t('log.summary.net')} <b class="${net >= 0 ? 'pos' : 'neg'}">${fmtAmount(net)}</b></span>` +
-        (drafts ? `<span class="s-item" style="color:var(--text-faint)">${t('log.summary.draftNote', { n: String(drafts) })}</span>` : ''),
+        `<span class="s-item">${t('log.summary.net')} <b class="${net >= 0 ? 'pos' : 'neg'}">${fmtAmount(net)}</b></span>`,
     );
 
     rangePill.textContent = `${dayLabel} · ${t('log.summary.count', { n: String(visible.length) })}`;
@@ -571,7 +565,7 @@ function renderEntry(parent: HTMLElement, entry: IndexEntry, config?: FinanceCon
   const h = headline(entry, config);
   const kind = entryKind(entry, config);
 
-  const row = parent.createDiv({ cls: `reg-row ${entry.isDraft ? 'is-draft' : ''}`.trim() });
+  const row = parent.createDiv({ cls: 'reg-row' });
 
   // 主行：日期 | kind pill | 摘要 | 方向 | 金额 [+已实现]
   const main = row.createDiv({ cls: 'reg-main' });
