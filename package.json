@@ -1,6 +1,6 @@
 {
   "name": "finance-block",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "description": "财务块 Finance Block —— 个人财务 OS：复式记账（fin-beancount 真源）+ 渲染视图（finance-log/budget/heatmap/ficalc）+ 财务自由目标计算。",
   "main": "main.js",
   "scripts": {
