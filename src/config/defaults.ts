@@ -47,16 +47,12 @@ export const DEFAULT_CONFIG: FinanceConfig = {
     { code: 'HKD', name: 'Hong Kong Dollar',    symbol: 'HK$', rate: 0.93 },
   ],
 
-  // 交易类型 —— 仅「支出」「收入」两个，可于设置页扩充
-  transactionTypes: [
-    { name: '支出', direction: 'expense' },
-    { name: '收入', direction: 'income' },
-  ],
+  // 交易类型 —— 种子为空，用户在设置页「交易类型管理」按需添加
+  //（曾预置「支出/收入」，与账户类别（收入/费用）语义重叠、对预算/热力图无意义，2026-08-06 移除）
+  transactionTypes: [],
 
-  // 预算 —— 一条日常支出预算
-  budgets: [
-    { name: '日常', type: '支出', amount: 5000_00, period: 'month' }, // 每月 5000 元
-  ],
+  // 预算 —— 种子为空（预算按交易类型匹配实绩，交易类型种子为空后原「日常/支出」种子悬空，2026-08-06 移除）
+  budgets: [],
 
   // 人生事件 —— 退休为内置特殊事件（不可删除、类型不可改）
   lifeEvents: [

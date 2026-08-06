@@ -115,9 +115,10 @@ export function resolveAccountClass(name: string, config?: FinanceConfig): Accou
 }
 
 /**
- * 单条 leg 的方向标签：替代数字正负，按账户所属维度表达 流入/流出/来源/去向。
- * 与 fin-beancount.html / finance-log.html 原型保持一致（资产增减 → 流入/流出，
- * 收入 → 来源，费用 → 去向，权益 → 权益）。借贷符号本身由账户类别推导，界面不出现 +/-。
+ * 单条 leg 的方向标签：替代数字正负，按账户所属维度表达方向。
+ * 资产/负债 → 余额增加/减少（legs.dir.in/out，借方为正记增加、贷方为负记增加，
+ * 符号反转已在下方分支处理）；收入 → 来源，费用 → 去向，权益/未知 → 权益。
+ * 借贷符号本身由账户类别推导，界面不出现 +/-。
  */
 export function dirOfPost(leg: BeancountLeg, config?: FinanceConfig): { label: string; cls: string } {
   const c = resolveAccountClass(leg.account, config);
@@ -129,7 +130,7 @@ export function dirOfPost(leg: BeancountLeg, config?: FinanceConfig): { label: s
   return { label: t('legs.dir.flat'), cls: 'flat' };
 }
 
-/** 录入层：每条腿的方向（流入 in / 流出 out），语义上 = 账户余额增加 / 减少。 */
+/** 录入层：每条腿的方向（增加 in / 减少 out），语义上 = 账户余额增加 / 减少。 */
 export type LegDirection = 'in' | 'out';
 
 /**

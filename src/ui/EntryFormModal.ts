@@ -709,7 +709,7 @@ export abstract class EntryFormModal extends Modal {
   private refreshLegRow(row: HTMLElement, i: number): void {
     const leg = this.legs[i];
     if (!leg) return;
-    const info = legDirInfo(leg.account, leg.dir, this.config);
+    const info = legDirInfo(leg.dir);
     const pill = row.querySelector('.fb-leg-dir') as HTMLElement | null;
     if (pill) {
       pill.className = `fb-leg-dir ${info.cls}`;
@@ -766,7 +766,7 @@ export abstract class EntryFormModal extends Modal {
     });
   }
 
-  /** 反转第 i 条腿的方向（流入 ↔ 流出） */
+  /** 反转第 i 条腿的方向（增加 ↔ 减少） */
   private flipLegDir(i: number): void {
     const leg = this.legs[i];
     if (!leg) return;
@@ -906,20 +906,12 @@ export abstract class EntryFormModal extends Modal {
 }
 
 /**
- * 单条腿的方向标签：由账户类别 + 方向推导（流入/流出/来源/去向/权益）。
- * 与 ledgerView.dirOfPost 的用词一致，但本函数面向「录入方向」维度。
+ * 单条腿的方向标签：统一表达该账户自身余额的「增加 / 减少」，不再按账户类别区分措辞。
+ * dir='in' = 余额增加、dir='out' = 余额减少（与 legSignedCents 的符号推导一致），
+ * 资产内部转账（现金→股票）等场景下措辞也直觉。收入/费用腿在账本视图
+ * （ledgerView.dirOfPost）仍显示角色标签「来源/去向」，录入表单只看余额增减。
  */
-function legDirInfo(
-  account: string,
-  dir: LegDirection,
-  config?: FinanceConfig,
-): { label: string; cls: string } {
-  const cls = resolveAccountClass(account, config);
-  let key: string;
-  if (cls === 'income') key = dir === 'in' ? 'legs.dir.src' : 'legs.dir.sink';
-  else if (cls === 'expense') key = dir === 'in' ? 'legs.dir.sink' : 'legs.dir.src';
-  else if (cls === 'asset' || cls === 'liability' || cls === 'equity')
-    key = dir === 'in' ? 'legs.dir.in' : 'legs.dir.out';
-  else key = 'legs.dir.flat';
+function legDirInfo(dir: LegDirection): { label: string; cls: string } {
+  const key = dir === 'in' ? 'legs.dir.in' : 'legs.dir.out';
   return { label: t(key), cls: key.split('.').pop() ?? 'flat' };
 }
