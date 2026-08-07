@@ -1,7 +1,7 @@
 {
   "id": "finance-block",
   "name": "Finance Block",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "1.13.4",
   "description": "个人财务 OS（Personal Finance OS）：以 fin-beancount 代码块为唯一真源的复式记账，含流水/预算/热力图/现金流模拟/资产总览/日常花费与贷款视图。数据纯文本存于 vault，可双链、可进 Git。",
   "author": "wanguliux",

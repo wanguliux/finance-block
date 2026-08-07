@@ -29,6 +29,17 @@ export default class FinancePlugin extends Plugin {
   config!: FinanceConfig;
   /** 是否为跨插件通用「插入代码块」命令的宿主（first-claim wins） */
   private ownsUniversalInsert = false;
+  /**
+   * 异步数据初始化 promise（加载 finance-config.json + 构建账本内存索引）。
+   * 启动性能：这两步是对 vault 内文件的重 IO，在云同步（如坚果云按需占位符）环境
+   * 冷启动时会被按需拉取放大到秒级。因此把它们移出 onload 关键路径改后台执行，
+   * onload 只做轻量注册后立即返回；所有需要 config/indexer 的消费点改走
+   * whenReady() 门控（代码块渲染、弹窗、事件增量索引）。
+   * 参见 obsidian-block-dev skill references/startup-performance-diagnostic.md §6 兜底方案。
+   */
+  private dataReady: Promise<void> | undefined;
+  /** dataReady 是否已落地（无论成败都置 true，避免失败时永久阻塞消费点） */
+  private readyFlag = false;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -36,24 +47,24 @@ export default class FinancePlugin extends Plugin {
     // 设置 i18n 语言
     setLocale((this.settings.language ?? 'zh') as Locale);
 
-    // 初始化配置管理器（vault 内 finance-config.json）
+    // 构造配置管理器与索引器（构造函数无 IO：只存引用 / 归一化路径），
+    // 保证 createProcessors 拿到的引用在 onload 内即有效。
+    // 真正的重 IO（configManager.load + indexer.init）移入后台 initData()。
     this.configManager = new ConfigManager(this.app, this.settings.configPath);
-    this.config = await this.configManager.load();
-
-    // 初始化索引器（纯内存索引；只读取指定的账本文件，不遍历全库）
     this.indexer = new Indexer(
       this.app,
       this.settings.ledgerPath,
       this.settings.archiveLedgers,
     );
-    await this.indexer.init();
+    // 后台异步初始化：不 await，onload 立即继续注册并返回
+    this.dataReady = this.initData();
 
     // ── 命令面板 ──────────────────────────────────────────
     this.addCommand({
       id: 'finance-record',
       name: t('command.record'),
       callback: () => {
-        this.openRecordModal();
+        void this.openRecordModal();
       },
     });
 
@@ -64,14 +75,14 @@ export default class FinancePlugin extends Plugin {
 
     // ── 侧边栏 Ribbon ────────────────────────────────────
     this.addRibbonIcon('coins', t('command.record'), () => {
-      this.openRecordModal();
+      void this.openRecordModal();
     });
 
     // 仅当本插件是通用插入命令宿主时才显示「插入代码块」ribbon。
     // 多插件共存时只有宿主显示 ribbon（避免重复按钮）；单插件独立装时自动成为宿主、显示 ribbon。
     if (this.ownsUniversalInsert) {
       this.addRibbonIcon('code', t('command.insertBlock'), () => {
-        this.openInsertCodeBlockModal();
+        void this.openInsertCodeBlockModal();
       });
     }
 
@@ -98,26 +109,33 @@ export default class FinancePlugin extends Plugin {
       openLoanModal: (loan, onChanged) => this.openLoanModal(loan, onChanged),
     });
     for (const processor of processors) {
-      this.registerMarkdownCodeBlockProcessor(processor.language, (source, el, ctx) =>
-        processor.render(source, el, ctx),
-      );
+      // 异步初始化门控：冷启动时 config/索引可能仍在后台加载（initData），
+      // 块渲染等 whenReady() 落地后再执行，避免读到未初始化的索引/配置。
+      this.registerMarkdownCodeBlockProcessor(processor.language, (source, el, ctx) => {
+        void this.whenReady().then(() => processor.render(source, el, ctx));
+      });
     }
 
     // ── 文件变更监听：增量更新索引 + 配置热重载 ──────────
+    // 门控说明：初始化完成前（whenReady 未落地）的变更不立即增量处理——
+    // initData 的 fullScan 会读取最新状态，初始化期间的变更由它兜住；
+    // 延后到 ready 之后执行可避免与首次全量扫描竞态。
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
         if (!(file instanceof TFile)) return;
         if (file.extension === 'md') {
           // 账本 / 草稿笔记变更：增量更新内存索引
-          this.indexer.updateFile(file.path);
+          void this.whenReady().then(() => this.indexer.updateFile(file.path));
         } else if (file.path === this.settings.configPath) {
           // finance-config.json 被外部直接编辑：重载内存配置，
           // 使 getBlockRegistry() 物化的账户/类型/所有者选项保持新鲜
           // （Pitfall #7：物化成静态快照后，若 config 缓存过期会导致跨插件下拉显示旧数据）。
-          this.reloadConfig().catch((err) => {
-            console.warn('[finance-block] Config hot-reload failed:', err);
-            new Notice(t('settings.configReloadError'));
-          });
+          void this.whenReady().then(() =>
+            this.reloadConfig().catch((err) => {
+              console.warn('[finance-block] Config hot-reload failed:', err);
+              new Notice(t('settings.configReloadError'));
+            }),
+          );
         }
       })
     );
@@ -126,7 +144,7 @@ export default class FinancePlugin extends Plugin {
       this.app.vault.on('create', (file) => {
         // 新建账本 / 草稿笔记时增量索引（否则要等下次全量扫描才出现）
         if (file instanceof TFile && file.extension === 'md') {
-          this.indexer.updateFile(file.path);
+          void this.whenReady().then(() => this.indexer.updateFile(file.path));
         }
       })
     );
@@ -135,7 +153,7 @@ export default class FinancePlugin extends Plugin {
       this.app.vault.on('delete', (file) => {
         if (file instanceof TFile && file.extension === 'md') {
           // 删除文件：清理索引中该文件的陈旧条目
-          this.indexer.removeFile(file.path);
+          void this.whenReady().then(() => this.indexer.removeFile(file.path));
         }
       })
     );
@@ -156,8 +174,38 @@ export default class FinancePlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  /**
+   * 后台数据初始化：加载 vault 配置 + 重建账本内存索引。
+   * 启动性能关键：这两步重 IO 不再阻塞 onload（云同步占位符冷拉取可达秒级）。
+   * 失败不向外抛出：configManager.load 内部已对解析失败回退默认配置；
+   * 索引失败时索引为空但插件仍可用（视图显示空数据，优于永久阻塞）。
+   * readyFlag 无论成败都置位，保证 whenReady() 不会永久挂起消费点。
+   */
+  private async initData(): Promise<void> {
+    try {
+      this.config = await this.configManager.load();
+      // 纯内存索引重建：只读取指定的账本文件（激活 + 归档），不遍历全库
+      await this.indexer.init();
+    } catch (err) {
+      console.error('[finance-block] Background data init failed:', err);
+    } finally {
+      this.readyFlag = true;
+    }
+  }
+
+  /** 数据初始化门控：需要 config/indexer 的消费点（渲染、弹窗、写操作、事件）先 await 此 promise */
+  whenReady(): Promise<void> {
+    return this.dataReady ?? Promise.resolve();
+  }
+
+  /** 数据初始化是否已完成（成功或降级都算完成） */
+  isReady(): boolean {
+    return this.readyFlag;
+  }
+
   /** 打开「记一笔」弹窗：复用 fin-beancount 录入表单，提交后直接入账到账本 */
-  private openRecordModal(): void {
+  private async openRecordModal(): Promise<void> {
+    await this.whenReady();
     const defs = this.getBlockDefinitions();
     const beancount = defs.find((d) => d.language === 'fin-beancount');
     if (!beancount) {
@@ -174,7 +222,8 @@ export default class FinancePlugin extends Plugin {
   }
 
   /** 打开「汇总结转」弹窗：把当前账本余额承接进新账本，旧账本归档 */
-  private openRolloverModal(): void {
+  private async openRolloverModal(): Promise<void> {
+    await this.whenReady();
     new RolloverModal(
       this.app,
       this.settings,
@@ -184,13 +233,15 @@ export default class FinancePlugin extends Plugin {
   }
 
   /** 打开「更新估值」弹窗：为资产账户写入 custom "fb-valuation" 指令行 */
-  private openValuationModal(account?: string): void {
+  private async openValuationModal(account?: string): Promise<void> {
+    await this.whenReady();
     new UpdateValuationModal(this, account).open();
   }
 
   /** 打开「人生事件」弹窗：规划买房/生娃等节点，驱动现金流模拟器的事件层与计算。
    * onChanged 由调用方（finance-ficalc 块）传入，事件增删改后触发重算刷新。 */
-  private openLifeEventModal(onChanged?: () => void): void {
+  private async openLifeEventModal(onChanged?: () => void): Promise<void> {
+    await this.whenReady();
     new LifeEventManagerModal(this, onChanged).open();
   }
 
@@ -198,6 +249,7 @@ export default class FinancePlugin extends Plugin {
 
   /** 日常草稿入账：组装 2 腿分录（符号按账户类别推导）→ 追加账本 → 刷新索引 */
   private async postRecurringEntry(plan: RecurringPlanDef, date: string, amountCents: AmountInCents): Promise<void> {
+    await this.whenReady();
     const cfg = this.config;
     const expense = legSignedCents(plan.account, amountCents, 'in', cfg); // 支出账户增加 → 正
     const asset = legSignedCents(plan.fromAccount, amountCents, 'out', cfg); // 出资账户减少 → 负
@@ -215,6 +267,7 @@ export default class FinancePlugin extends Plugin {
 
   /** 日常草稿跳过：写 recurringSkips（键=应发生日） */
   private async skipRecurringEntry(planId: string, date: string): Promise<void> {
+    await this.whenReady();
     const skips = { ...this.config.recurringSkips };
     const arr = [...(skips[planId] ?? [])];
     if (!arr.includes(date)) arr.push(date);
@@ -225,12 +278,14 @@ export default class FinancePlugin extends Plugin {
 
   /** 贷款期入账：引擎生成 3 腿分录 → 追加账本 → 刷新索引 */
   private async postLoanEntry(loan: LoanDef, period: LoanPeriod): Promise<void> {
+    await this.whenReady();
     const text = loanEntryText(period, loan, this.config);
     await this.appendToLedger(text, period.date);
   }
 
   /** 日常计划新建/更新（含暂停/启用）；plan.id 存在则替换，否则追加 */
   private async saveRecurringPlan(plan: RecurringPlanDef): Promise<void> {
+    await this.whenReady();
     const exists = this.config.recurringPlans.some((p) => p.id === plan.id);
     const recurringPlans = exists
       ? this.config.recurringPlans.map((p) => (p.id === plan.id ? plan : p))
@@ -241,12 +296,14 @@ export default class FinancePlugin extends Plugin {
 
   /** 删除日常计划（已入账账本记录不受影响） */
   private async removeRecurringPlan(planId: string): Promise<void> {
+    await this.whenReady();
     await this.configManager.update({ recurringPlans: this.config.recurringPlans.filter((p) => p.id !== planId) });
     await this.syncConfig();
   }
 
   /** 贷款新建/更新（含暂停/启用、剩余本金覆盖=部分提前还本） */
   private async saveLoan(loan: LoanDef): Promise<void> {
+    await this.whenReady();
     const exists = this.config.loanPlans.some((l) => l.id === loan.id);
     const loanPlans = exists
       ? this.config.loanPlans.map((l) => (l.id === loan.id ? loan : l))
@@ -257,12 +314,14 @@ export default class FinancePlugin extends Plugin {
 
   /** 删除贷款 */
   private async removeLoan(loanId: string): Promise<void> {
+    await this.whenReady();
     await this.configManager.update({ loanPlans: this.config.loanPlans.filter((l) => l.id !== loanId) });
     await this.syncConfig();
   }
 
   /** 打开日常计划弹窗；onChanged 在保存后回调（渲染器重绘） */
-  private openRecurringPlanModal(plan?: RecurringPlanDef, onChanged?: () => void): void {
+  private async openRecurringPlanModal(plan?: RecurringPlanDef, onChanged?: () => void): Promise<void> {
+    await this.whenReady();
     new RecurringPlanModal(this.app, this.config, plan, (saved) => {
       void this.saveRecurringPlan(saved)
         .then(onChanged)
@@ -274,7 +333,8 @@ export default class FinancePlugin extends Plugin {
   }
 
   /** 打开贷款弹窗；onChanged 在保存后回调（渲染器重绘） */
-  private openLoanModal(loan?: LoanDef, onChanged?: () => void): void {
+  private async openLoanModal(loan?: LoanDef, onChanged?: () => void): Promise<void> {
+    await this.whenReady();
     new LoanModal(this.app, this.config, loan, (saved) => {
       void this.saveLoan(saved)
         .then(onChanged)
@@ -299,11 +359,14 @@ export default class FinancePlugin extends Plugin {
   }
 
   /** 打开代码块插入弹窗（跨插件通用：合并所有 BlockProvider 的定义） */
-  private openInsertCodeBlockModal(): void {
+  private async openInsertCodeBlockModal(): Promise<void> {
+    await this.whenReady();
     new InsertCodeBlockModal(this.app, this.config).open();
   }
 
-  /** 获取当前 vault 配置（只读） */
+  /** 获取当前 vault 配置（只读）。
+   * 异步初始化语义：whenReady() 落地前为 undefined（冷启动后台加载窗口），
+   * 跨插件调用方需容错；插件内部消费点一律先 await whenReady()。 */
   getConfig(): Readonly<FinanceConfig> {
     return this.config;
   }

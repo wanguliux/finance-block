@@ -41,10 +41,10 @@ const context = await esbuild.context({
   },
 });
 
-/** 将 manifest.json 和 styles.css 复制到「版本」文件夹，组成完整分发包 */
+/** 将 manifest.json、styles.css、versions.json 复制到「版本」文件夹，组成完整分发包（main.js 由 esbuild 直写，四件套齐） */
 function copyAssets() {
   if (!fs.existsSync(DIST_DIR)) fs.mkdirSync(DIST_DIR, { recursive: true });
-  for (const file of ['manifest.json', 'styles.css']) {
+  for (const file of ['manifest.json', 'styles.css', 'versions.json']) {
     fs.copyFileSync(file, path.join(DIST_DIR, file));
   }
 }

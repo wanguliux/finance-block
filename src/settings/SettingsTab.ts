@@ -40,37 +40,45 @@ export class FinanceSettingTab extends PluginSettingTab {
   }
 
   // ── 管理条目定义（声明式 + 命令式共用） ────────────────
+
+  /** 管理弹窗统一等插件数据初始化完成后再打开。
+   * 启动性能改造后 config/索引在后台异步加载（main.ts initData），
+   * 管理弹窗直接读 plugin.config，须等 whenReady() 落地，避免读到未加载状态。 */
+  private openWhenReady(open: () => void): void {
+    void this.plugin.whenReady().then(open);
+  }
+
   private buildManagers(): Record<ManagerKey, { name: string; desc: string; open: () => void }> {
     return {
       currency: {
         name: t('settings.currencyManager'),
         desc: t('settings.currencyManager.desc'),
-        open: () => new CurrencyManagerModal(this.plugin).open(),
+        open: () => this.openWhenReady(() => new CurrencyManagerModal(this.plugin).open()),
       },
       account: {
         name: t('settings.accounts'),
         desc: t('settings.accounts.desc'),
-        open: () => new AccountManagerModal(this.plugin).open(),
+        open: () => this.openWhenReady(() => new AccountManagerModal(this.plugin).open()),
       },
       type: {
         name: t('settings.transactionTypes'),
         desc: t('settings.transactionTypes.desc'),
-        open: () => new TypeManagerModal(this.plugin).open(),
+        open: () => this.openWhenReady(() => new TypeManagerModal(this.plugin).open()),
       },
       owner: {
         name: t('settings.owners'),
         desc: t('settings.owners.desc'),
-        open: () => new OwnerManagerModal(this.plugin).open(),
+        open: () => this.openWhenReady(() => new OwnerManagerModal(this.plugin).open()),
       },
       budget: {
         name: t('settings.budgetManager'),
         desc: t('settings.budgetManager.desc'),
-        open: () => new BudgetManagerModal(this.plugin).open(),
+        open: () => this.openWhenReady(() => new BudgetManagerModal(this.plugin).open()),
       },
       lifeEvent: {
         name: t('settings.lifeEventManager'),
         desc: t('settings.lifeEventManager.desc'),
-        open: () => new LifeEventManagerModal(this.plugin).open(),
+        open: () => this.openWhenReady(() => new LifeEventManagerModal(this.plugin).open()),
       },
     };
   }
@@ -119,7 +127,9 @@ export class FinanceSettingTab extends PluginSettingTab {
               this.renderPathInput(setting, 'ledgerPath', t('settings.ledgerPath.placeholder'));
               // 存档管理入口挂在账本路径行（与原命令式布局一致）
               setting.addButton((btn) =>
-                btn.setButtonText(t('settings.archiveManager')).onClick(() => new ArchiveManagerModal(this.plugin).open()),
+                btn.setButtonText(t('settings.archiveManager')).onClick(() =>
+                  this.openWhenReady(() => new ArchiveManagerModal(this.plugin).open()),
+                ),
               );
             },
           },
@@ -191,7 +201,7 @@ export class FinanceSettingTab extends PluginSettingTab {
         button
           .setButtonText(t('settings.archiveManager'))
           .onClick(() => {
-            new ArchiveManagerModal(this.plugin).open();
+            this.openWhenReady(() => new ArchiveManagerModal(this.plugin).open());
           }),
       );
 
