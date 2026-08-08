@@ -281,7 +281,7 @@ export class UpdateValuationModal extends Modal {
 
   /** 当前填写的估值行（不含 ^v- 前缀）。非法时返回 null。 */
   private buildLine(): string | null {
-    const account = this.accountSelect.value;
+    const account = this.selectedAccount();
     if (!account) return null;
     const yuan = parseFloat(this.amountInput.value);
     if (isNaN(yuan)) return null;
