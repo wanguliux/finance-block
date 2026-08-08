@@ -2,6 +2,7 @@ import type { App } from 'obsidian';
 import type { FinanceConfig } from '../types';
 import { DEFAULT_CONFIG } from './defaults';
 import { CURRENCY_SYMBOLS } from '../engine/fx';
+import { mergeConfig } from '../shared/configOps';
 
 /**
  * 配置管理器：负责从 vault 读取 / 写入 finance-config.json，
@@ -27,7 +28,7 @@ export class ConfigManager {
         const userConfig = JSON.parse(raw) as Partial<FinanceConfig> & {
           fxRates?: Record<string, number>; // 旧版字段，迁移用
         };
-        this.config = this.merge(DEFAULT_CONFIG, userConfig);
+        this.config = mergeConfig(DEFAULT_CONFIG, userConfig);
 
         // 迁移：旧版汇率表 fxRates → 新版币种列表 currencies。
         // 仅当用户尚未使用 currencies（老用户）时触发，新配置跳过。
@@ -74,20 +75,11 @@ export class ConfigManager {
 
   /** 更新配置（部分更新）并持久化 */
   async update(patch: Partial<FinanceConfig>): Promise<FinanceConfig> {
-    this.config = this.merge(this.config, patch);
+    this.config = mergeConfig(this.config, patch);
     await this.save();
     return this.config;
   }
 
-  /** 浅层合并：数组与对象直接覆盖（用户意图明确），标量取用户值 */
-  private merge(base: FinanceConfig, patch: Partial<FinanceConfig>): FinanceConfig {
-    const result = structuredClone(base);
-    for (const key of Object.keys(patch) as (keyof FinanceConfig)[]) {
-      const val = patch[key];
-      if (val !== undefined) {
-        (result as unknown as Record<string, unknown>)[key] = structuredClone(val);
-      }
-    }
-    return result;
-  }
+  /** 浅层合并：数组与对象直接覆盖（用户意图明确），标量取用户值。
+   *  实现已抽到 src/shared/configOps.mergeConfig（与 CLI 共用同一份合并语义）。 */
 }

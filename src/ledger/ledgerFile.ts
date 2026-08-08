@@ -16,6 +16,7 @@
  */
 
 import { App } from 'obsidian';
+import { appendEntryToContent } from '../shared/ledgerWrite';
 
 export interface AppendResult {
   success: boolean;
@@ -31,6 +32,9 @@ export interface AppendResult {
  *   - 已存在唯一的 fin-beancount 块 → 在该块内、闭合 ``` 之前插入这笔（与块内其他分录用空行隔开）。
  *   - 文件存在但没有 fin-beancount 块 → 在文件末尾追加一个 fin-beancount 块。
  *
+ * 纯字符串变换（块的查找与插入）已抽到 src/shared/ledgerWrite.appendEntryToContent，
+ * 本函数只负责 Obsidian 文件 IO，供插件与 CLI 共用同一份插入逻辑。
+ *
  * @param ledgerPath  账本文件完整路径（如 账本/账本.md）
  * @param entryBody   分录内文（**不含** ``` 围栏），如（虚构示例）：
  *                      2026-01-01 * 示例支出\n  资产:现金 -3500\n  费用:示例 3500
@@ -43,12 +47,6 @@ export async function appendEntryToLedgerBlock(
   blockRefId: string,
 ): Promise<AppendResult> {
   const adapter = app.vault.adapter;
-  // 归一化块引用 ID：保留 t / v 前缀语义（t=交易，v=估值）。
-  // 无论入参是 ^t-xxx / t-xxx / ^v-xxx / v-xxx / xxx，统一规整为 ^<t|v>-xxx。
-  const kindMatch = /^\^?([tv])-/.exec(blockRefId);
-  const kind = kindMatch ? kindMatch[1] : 't';
-  const refId = `^${kind}-${blockRefId.replace(/^\^?[tv]-/, '')}`;
-  const entryText = `${entryBody}\n${refId}`; // 块内新分录（不含围栏）
 
   // 账本文件所在文件夹（用于确保目录存在）
   const folder = ledgerPath.includes('/')
@@ -61,32 +59,12 @@ export async function appendEntryToLedgerBlock(
       await adapter.mkdir(folder);
     }
 
-    if (await adapter.exists(ledgerPath)) {
-      const existing = await adapter.read(ledgerPath);
-      const blockMatch = /```fin-beancount\r?\n([\s\S]*?)```/.exec(existing);
+    const existing = (await adapter.exists(ledgerPath))
+      ? await adapter.read(ledgerPath)
+      : null;
 
-      if (blockMatch) {
-        // 找到唯一的 fin-beancount 块：在其闭合 ``` 之前插入新分录
-        const blockEnd = blockMatch.index + blockMatch[0].length; // 闭合 fence 之后的位置
-        const closeFenceStart = blockEnd - 3; // 闭合 ``` 起始下标
-        const before = existing.slice(0, closeFenceStart);
-        const after = existing.slice(closeFenceStart);
-        // 注意：entryText 以 ^t-xxx 结尾（无换行），after 是闭合 ```（无前导换行），
-        // 必须在 after 前补一个 \n，否则最后一条分录会黏在 ``` 上导致渲染异常。
-        const newContent = `${before}\n\n${entryText}\n${after}`;
-        await adapter.write(ledgerPath, newContent);
-        return { success: true, ledgerPath };
-      }
-
-      // 文件存在但无 fin-beancount 块 → 末尾追加一个
-      await adapter.write(ledgerPath, `${existing}\n\n\`\`\`fin-beancount\n${entryText}\n\`\`\`\n`);
-      return { success: true, ledgerPath };
-    }
-
-    // 文件不存在 → 创建，含标题 + 单个 fin-beancount 块
-    const title = ledgerPath.split('/').pop()?.replace('.md', '') || '账本';
-    const content = `# ${title}\n\n\`\`\`fin-beancount\n${entryText}\n\`\`\`\n`;
-    await adapter.write(ledgerPath, content);
+    const newContent = appendEntryToContent(existing, entryBody, blockRefId, ledgerPath);
+    await adapter.write(ledgerPath, newContent);
     return { success: true, ledgerPath };
   } catch (error) {
     return {

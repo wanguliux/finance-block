@@ -22,7 +22,11 @@
 import { App, TFile } from 'obsidian';
 import { parseFinBeancount } from '../parser/finBeancount';
 import { appendEntryToLedgerBlock } from './ledgerFile';
+import { generateBlockRefId } from '../shared/entry';
 import { t } from '../i18n';
+
+// 块引用 ID 生成已抽到 src/shared/entry（无 App，供 CLI 共用）；此处 re-export 保持向后兼容。
+export { generateBlockRefId };
 
 /** 入账结果（单笔） */
 export interface PostOneResult {
@@ -31,26 +35,6 @@ export interface PostOneResult {
   blockRefId?: string; // 生成的块引用 ID
   ledgerPath?: string; // 账本文件路径
   error?: string;
-}
-
-/**
- * 生成块引用 ID
- * 格式：^t-YYYYMMDDHHmmssNN（精确到秒 + 两位递增序号，确保批量入账时同秒内唯一）
- * 估值行用对称的 ^v-（见 generateValuationRefId）。
- */
-let blockRefSeq = 0;
-export function generateBlockRefId(date?: string): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
-  const seq = String(blockRefSeq++ % 100).padStart(2, '0');
-
-  const datePrefix = date ? date.replace(/-/g, '') : `${year}${month}${day}`;
-  return `^t-${datePrefix}${hours}${minutes}${seconds}${seq}`;
 }
 
 /**

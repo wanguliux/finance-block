@@ -17,10 +17,14 @@ import { LoanModal } from './ui/LoanModal';
 import { FINANCE_CODE_BLOCK_DEFS, type CodeBlockDef } from './codeBlockDefs';
 import type { BlockDefinitionWithParams } from './blockProvider';
 import type { FinanceConfig, LoanDef, LoanPeriod, RecurringPlanDef, AmountInCents } from './types';
-import { generateBlockRefId } from './ledger/poster';
+import { generateBlockRefId, generateValuationRefId } from './ledger/poster';
 import { appendEntryToLedgerBlock } from './ledger/ledgerFile';
 import { legSignedCents } from './util/ledgerView';
-import { loanEntryText } from './engine/loan';
+import { loanEntryText, deriveLoanPostings } from './engine/loan';
+import { replaceEntryByRef, tombstoneEntryByRef, appendEntryToContent } from './shared/ledgerWrite';
+import { buildValuationText } from './shared/entry';
+
+console.log(`[finance-bench] module-eval-done wall=${Date.now()} perf=${performance.now().toFixed(0)}`); // TEMP-BENCH
 
 export default class FinancePlugin extends Plugin {
   settings!: FinancePluginSettings;
@@ -42,7 +46,10 @@ export default class FinancePlugin extends Plugin {
   private readyFlag = false;
 
   async onload(): Promise<void> {
+    console.log(`[finance-bench] onload-start wall=${Date.now()} perf=${performance.now().toFixed(0)}`); // TEMP-BENCH
+    const _b0 = performance.now(); // TEMP-BENCH
     await this.loadSettings();
+    const _b1 = performance.now(); // TEMP-BENCH
 
     // 设置 i18n 语言
     setLocale((this.settings.language ?? 'zh') as Locale);
@@ -58,6 +65,20 @@ export default class FinancePlugin extends Plugin {
     );
     // 后台异步初始化：不 await，onload 立即继续注册并返回
     this.dataReady = this.initData();
+    const _b2 = performance.now(); // TEMP-BENCH
+
+    // 暴露全局 API：供 finance-block-record CLI 经 obsidian-cli 在实例内写入账本
+    // （调用插件真实函数，触发 indexer 实时刷新；逻辑单一真相源在 shared/）。
+    (globalThis as unknown as { financeBlock?: unknown }).financeBlock = {
+      appendToLedger: (entryBody: string, date: string) => this.appendToLedger(entryBody, date),
+      editLedgerEntry: (ledgerPath: string, refId: string, newBody: string) =>
+        this.editLedgerEntry(ledgerPath, refId, newBody),
+      deleteLedgerEntry: (ledgerPath: string, refId: string) => this.deleteLedgerEntry(ledgerPath, refId),
+      appendValuation: (ledgerPath: string, date: string, account: string, cents: number, currency?: string) =>
+        this.appendValuation(ledgerPath, date, account, cents, currency),
+      postLoanPeriods: (ledgerPath: string, loanId: string, upToPeriod?: number) =>
+        this.postLoanPeriods(ledgerPath, loanId, upToPeriod),
+    };
 
     // ── 命令面板 ──────────────────────────────────────────
     this.addCommand({
@@ -160,6 +181,8 @@ export default class FinancePlugin extends Plugin {
 
     // ── 设置页 ────────────────────────────────────────────
     this.addSettingTab(new FinanceSettingTab(this.app, this));
+    const _b3 = performance.now(); // TEMP-BENCH
+    console.log(`[finance-bench] onload-steps loadSettings=${(_b1 - _b0).toFixed(0)}ms construct+kick=${(_b2 - _b1).toFixed(0)}ms register=${(_b3 - _b2).toFixed(0)}ms onload-total=${(_b3 - _b0).toFixed(0)}ms wall-end=${Date.now()}`); // TEMP-BENCH
   }
 
   onunload(): void {
@@ -182,10 +205,14 @@ export default class FinancePlugin extends Plugin {
    * readyFlag 无论成败都置位，保证 whenReady() 不会永久挂起消费点。
    */
   private async initData(): Promise<void> {
+    const _i0 = performance.now(); // TEMP-BENCH
     try {
       this.config = await this.configManager.load();
+      const _i1 = performance.now(); // TEMP-BENCH
       // 纯内存索引重建：只读取指定的账本文件（激活 + 归档），不遍历全库
       await this.indexer.init();
+      const _i2 = performance.now(); // TEMP-BENCH
+      console.log(`[finance-bench] initData(background) config=${(_i1 - _i0).toFixed(0)}ms index=${(_i2 - _i1).toFixed(0)}ms`); // TEMP-BENCH
     } catch (err) {
       console.error('[finance-block] Background data init failed:', err);
     } finally {
@@ -345,12 +372,60 @@ export default class FinancePlugin extends Plugin {
     }).open();
   }
 
-  /** 追加分录到账本（复用 ledgerFile.appendEntryToLedgerBlock）并刷新索引 */
-  private async appendToLedger(entryBody: string, date: string): Promise<void> {
+  /** 追加分录到账本（复用 ledgerFile.appendEntryToLedgerBlock）并刷新索引，返回生成的块引用 ID */
+  private async appendToLedger(entryBody: string, date: string): Promise<string> {
     const refId = generateBlockRefId(date);
     const result = await appendEntryToLedgerBlock(this.app, this.settings.ledgerPath, entryBody, refId);
     if (!result.success) throw new Error(result.error || 'append failed');
     await this.indexer.updateFile(result.ledgerPath);
+    return refId;
+  }
+
+  /** 编辑账本中指定块引用的分录（ref 不变），刷新索引。逻辑单一真相源在 shared/ledgerWrite。 */
+  private async editLedgerEntry(ledgerPath: string, refId: string, newBody: string): Promise<void> {
+    const content = await this.app.vault.adapter.read(ledgerPath);
+    const next = replaceEntryByRef(content, refId, newBody);
+    await this.app.vault.adapter.write(ledgerPath, next);
+    await this.indexer.updateFile(ledgerPath);
+  }
+
+  /** 软删除账本中指定块引用的分录（注释墓碑，数据保留），刷新索引。 */
+  private async deleteLedgerEntry(ledgerPath: string, refId: string): Promise<void> {
+    const content = await this.app.vault.adapter.read(ledgerPath);
+    const next = tombstoneEntryByRef(content, refId);
+    await this.app.vault.adapter.write(ledgerPath, next);
+    await this.indexer.updateFile(ledgerPath);
+  }
+
+  /** 向账本追加一条估值行（custom "fb-valuation"），刷新索引。 */
+  private async appendValuation(
+    ledgerPath: string,
+    date: string,
+    account: string,
+    cents: number,
+    currency?: string,
+  ): Promise<void> {
+    const refId = generateValuationRefId(date);
+    const body = buildValuationText(date, account, cents, currency);
+    const existing = await this.app.vault.adapter.read(ledgerPath).catch(() => null);
+    const next = appendEntryToContent(existing, body, refId, ledgerPath);
+    const folder = ledgerPath.includes('/') ? ledgerPath.slice(0, ledgerPath.lastIndexOf('/')) : '';
+    if (folder && !(await this.app.vault.adapter.exists(folder))) await this.app.vault.adapter.mkdir(folder);
+    await this.app.vault.adapter.write(ledgerPath, next);
+    await this.indexer.updateFile(ledgerPath);
+  }
+
+  /** 按账本已入账期号续算并批量入账贷款待还期，返回入账期数。 */
+  private async postLoanPeriods(ledgerPath: string, loanId: string, upToPeriod?: number): Promise<number> {
+    const content = await this.app.vault.adapter.read(ledgerPath);
+    const postings = deriveLoanPostings(content, this.config, loanId, upToPeriod);
+    let cur = content;
+    for (const body of postings) {
+      cur = appendEntryToContent(cur, body, generateBlockRefId(), ledgerPath);
+    }
+    await this.app.vault.adapter.write(ledgerPath, cur);
+    await this.indexer.updateFile(ledgerPath);
+    return postings.length;
   }
 
   /** configManager.update 后同步内存 config（update 内部重新赋值，main 持有的旧引用会过期） */

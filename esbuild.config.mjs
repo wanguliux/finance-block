@@ -41,6 +41,22 @@ const context = await esbuild.context({
   },
 });
 
+// 第二入口：finance-block-record 的自然语言代理内核（CLI）
+// 从插件共享纯核心（src/shared + src/parser）打包成单文件，供 skill 调用——
+// 不是手写平行实现，插件改 src 后重 build 即继承，零漂移。
+// 该图不含 obsidian 依赖（纯核心 + i18n 安全），故不 external、platform=node。
+const CLI_OUT = 'finance-block-record/scripts/finance-block-cli.js';
+const cliContext = await esbuild.context({
+  entryPoints: ['src/cli/index.ts'],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  target: 'node18',
+  logLevel: 'info',
+  treeShaking: true,
+  outfile: CLI_OUT,
+});
+
 /** 将 manifest.json、styles.css、versions.json 复制到「版本」文件夹，组成完整分发包（main.js 由 esbuild 直写，四件套齐） */
 function copyAssets() {
   if (!fs.existsSync(DIST_DIR)) fs.mkdirSync(DIST_DIR, { recursive: true });
@@ -52,6 +68,7 @@ function copyAssets() {
 if (prod) {
   // 生产模式：一次性重新构建后退出
   await context.rebuild();
+  await cliContext.rebuild();
   copyAssets();
   process.exit(0);
 } else {
@@ -59,4 +76,5 @@ if (prod) {
   if (!fs.existsSync(DIST_DIR)) fs.mkdirSync(DIST_DIR, { recursive: true });
   copyAssets();
   await context.watch();
+  await cliContext.watch();
 }

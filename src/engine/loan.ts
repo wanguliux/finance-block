@@ -19,6 +19,7 @@
 import type { AmountInCents, FinanceConfig, LoanDef, LoanPeriod } from '../types';
 import { localDateString } from '../util/date';
 import { legSignedCents, parseYmd } from '../util/ledgerView';
+import { parseFinBeancount } from '../parser/finBeancount';
 
 /** 续算选项：编辑贷款时从下一未入账期以新剩余本金续算 */
 export interface LoanScheduleOptions {
@@ -120,4 +121,46 @@ export function loanEntryText(period: LoanPeriod, def: LoanDef, config?: Finance
   if (def.txnType) lines.push(`  type: ${def.txnType}`);
   if (def.owner) lines.push(`  owner: ${def.owner}`);
   return lines.join('\n');
+}
+
+/**
+ * 从账本已入账期号续算，生成「待入账」的分录文本列表（供 CLI / 插件批量入账）。
+ *
+ * 纯函数（不读写文件）：读取账本内文，找出该贷款已入账的最大期号，
+ * 从「下一期」起以 def.principal 为起算本金续算（与视图引擎续算规则一致），
+ * 逐期调用 loanEntryText 输出 3 腿分录（不含围栏与 ^t- 引用，由入账方追加）。
+ *
+ * @param ledgerContent  账本文件完整内容（需含唯一 fin-beancount 块）
+ * @param config         finance-config（含 loanPlans）
+ * @param loanId         贷款计划 id
+ * @param upToPeriod     可选：只生成到该期号（缺省 = 全部剩余期）
+ * @returns              待入账分录文本数组（按绝对期号升序）
+ */
+export function deriveLoanPostings(
+  ledgerContent: string,
+  config: FinanceConfig,
+  loanId: string,
+  upToPeriod?: number,
+): string[] {
+  const def = config.loanPlans.find((p) => p.id === loanId);
+  if (!def) throw new Error(`贷款计划不存在：${loanId}`);
+
+  const parsed = parseFinBeancount(ledgerContent);
+  let maxPosted = 0;
+  for (const t of parsed.transactions) {
+    if (t.fields?.['loan'] === loanId) {
+      const p = Number(t.fields?.['loan-period']);
+      if (!Number.isNaN(p) && p > maxPosted) maxPosted = p;
+    }
+  }
+
+  const ppy = def.frequency === 'quarterly' ? 4 : 12;
+  const total = def.termYears * ppy;
+  const upTo = upToPeriod ?? total;
+  if (maxPosted >= upTo) return [];
+
+  const schedule = computeLoanSchedule(def, { startPeriod: maxPosted + 1 });
+  return schedule
+    .filter((period) => period.period <= upTo)
+    .map((period) => loanEntryText(period, def, config));
 }
