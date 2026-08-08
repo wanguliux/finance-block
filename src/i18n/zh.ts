@@ -446,6 +446,8 @@ export const zh: Record<string, string> = {
   'log.kind.sell': '卖资产',
   'log.kind.income': '收入',
   'log.kind.expense': '支出',
+  'log.kind.opening': '期初建账',
+  'log.kind.equity': '权益变动',
   'log.dir.in': '流入',
   'log.dir.out': '流出',
   'log.dir.transfer': '转账',
@@ -454,6 +456,8 @@ export const zh: Record<string, string> = {
   'log.headline.buyAsset': '买入资产',
   'log.headline.sellAsset': '卖出资产',
   'log.headline.transfer': '转账',
+  'log.headline.opening': '权益',
+  'log.headline.equity': '权益变动',
   'log.headline.realized': '已实现',
 
   'beancount.ok': '✓ {n} 笔交易，零和校验通过',

@@ -151,10 +151,15 @@ function fmtAmount(cents: number): string {
   return `${sign}¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** 判断是否为「期初结转 / 余额承接」分录：流水视图默认隐藏 */
-function isCarryForwardEntry(entry: IndexEntry): boolean {
+/** 判断是否为「期初建账 / 汇总结转」分录：流水视图默认隐藏 */
+function isOpeningOrRolloverEntry(entry: IndexEntry): boolean {
   const txn = entry.transaction;
-  return txn.narration === '期初结转 · 余额承接' || txn.fields?.period === '期初';
+  return (
+    txn.narration === '期初结转 · 余额承接' ||
+    txn.narration === '期初建账' ||
+    txn.fields?.period === '期初' ||
+    txn.fields?.opening === 'true'
+  );
 }
 
 /**
@@ -214,13 +219,27 @@ export function entryKind(entry: IndexEntry, config?: FinanceConfig): {
     return { kind: 'income', label: t('log.kind.income'), cls: 'k-in' };
   }
 
-  // 纯 balance sheet 变动 → 判断是买/卖/转账
+  // 纯 balance sheet 变动
   const allBalanceSheet = entry.transaction.legs.every((l) => {
     const c = resolveAccountClass(l.account, config);
     return c === 'asset' || c === 'liability' || c === 'equity';
   });
 
   if (allBalanceSheet && entry.transaction.legs.length >= 2) {
+    // 1) 系统开账 / 汇总结转（带显式标记）→ 默认隐藏，不参与收支/流水统计
+    if (isOpeningOrRolloverEntry(entry)) {
+      return { kind: 'opening', label: t('log.kind.opening'), cls: 'k-flat' };
+    }
+
+    // 2) 含 equity 但不是开账/结转 → 资本注入、利润分配等权益变动
+    const hasEquity = entry.transaction.legs.some(
+      (l) => resolveAccountClass(l.account, config) === 'equity',
+    );
+    if (hasEquity) {
+      return { kind: 'equity', label: t('log.kind.equity'), cls: 'k-flat' };
+    }
+
+    // 3) 纯资产/负债转换 → 买 / 卖 / 转账
     const assetLegs = entry.transaction.legs.filter((l) => resolveAccountClass(l.account, config) === 'asset');
     if (assetLegs.length >= 2) {
       const assetDelta = assetLegs.reduce((s, l) => s + l.amount, 0);
@@ -247,14 +266,14 @@ function includesFold(haystack: string | undefined, needle: string): boolean {
 /**
  * 全部筛选逻辑的唯一入口（纯函数，便于单测）。
  *
- * 顺序：排除期初结转 → ID 精确查询 or 日期窗口 → 属性筛选（金额/账户/类型/归属）。
+ * 顺序：排除期初建账/汇总结转 → ID 精确查询 or 日期窗口 → 属性筛选（金额/账户/类型/归属）。
  */
 export function filterEntries(
   entries: IndexEntry[],
   params: LogParams,
   today: string = todayLocal(),
 ): IndexEntry[] {
-  let filtered = entries.filter((e) => !isCarryForwardEntry(e));
+  let filtered = entries.filter((e) => !isOpeningOrRolloverEntry(e));
 
   if (params.ids && params.ids.length > 0) {
     const idSet = new Set(params.ids);
@@ -326,7 +345,7 @@ function collectCriteria(params: LogParams): Array<[string, string]> {
  * 计算每笔交易的「头条」净变动信息（用于流水行主显示）。
  * 返回：方向标签、金额、方向 CSS class、可选附加信息（如已实现损益）。
  */
-function headline(
+export function headline(
   entry: IndexEntry,
   config?: FinanceConfig,
 ): { amount: number; dir: string; cls: string; sub: string } {
@@ -359,6 +378,20 @@ function headline(
       dir = t('log.headline.buyAsset');
       cls = 'flat';
       break;
+    case 'opening': {
+      const equityLeg = legs.find((l) => resolveAccountClass(l.account, config) === 'equity');
+      amount = equityLeg ? Math.abs(equityLeg.amount) : Math.abs(assetDelta);
+      dir = t('log.headline.opening');
+      cls = 'flat';
+      break;
+    }
+    case 'equity': {
+      const equityLeg = legs.find((l) => resolveAccountClass(l.account, config) === 'equity');
+      amount = equityLeg ? Math.abs(equityLeg.amount) : Math.abs(assetDelta);
+      dir = t('log.headline.equity');
+      cls = 'flat';
+      break;
+    }
     case 'sell': {
       amount = cashPost ? Math.abs(cashPost.amount) : Math.abs(assetDelta);
       dir = t('log.headline.sellAsset');

@@ -445,6 +445,8 @@ export const en: Record<string, string> = {
   'log.kind.sell': 'Sell asset',
   'log.kind.income': 'Income',
   'log.kind.expense': 'Expense',
+  'log.kind.opening': 'Opening',
+  'log.kind.equity': 'Equity Change',
   'log.dir.in': 'Inflow',
   'log.dir.out': 'Outflow',
   'log.dir.transfer': 'Transfer',
@@ -453,6 +455,8 @@ export const en: Record<string, string> = {
   'log.headline.buyAsset': 'Buy asset',
   'log.headline.sellAsset': 'Sell asset',
   'log.headline.transfer': 'Transfer',
+  'log.headline.opening': 'Equity',
+  'log.headline.equity': 'Equity Change',
   'log.headline.realized': 'Realized',
 
   'beancount.ok': '✓ {n} transaction(s), zero-sum validated',
